@@ -1,0 +1,6 @@
+{
+  "name": "Controle de Estoque & CMV",
+  "description": "Sistema SaaS multi-empresa de controle de estoque e CMV com tela de estoque geral consolidado, vinculação de produtos ao cadastro de fornecedores, orçamentos inteligentes agrupados por variedade de fornecedores, gestão de filiais e controle de validade de preços.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

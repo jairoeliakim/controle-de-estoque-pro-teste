@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Credenciais do Administrador fora do banco (Proteção contra vazamento no Git)
+admin-credentials.json
+*.credentials.json
+.admin-secrets.json
