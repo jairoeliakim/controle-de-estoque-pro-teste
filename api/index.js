@@ -2322,6 +2322,48 @@ function testTcpSocket(host, port, timeoutMs = 2500) {
     socket.connect(port, host);
   });
 }
+function describeSupabaseIssue(config, err) {
+  const host = String(config.host || "").toLowerCase();
+  const isDirect = /^db\.[a-z0-9]+\.supabase\.co$/.test(host);
+  const isPooler = /\.pooler\.supabase\.com$/.test(host);
+  if (!isDirect && !isPooler) return null;
+  const msg = String(err?.message || "");
+  const code = String(err?.code || "");
+  if (!config.ssl && /ssl|encrypt|pg_hba/i.test(msg)) {
+    return {
+      type: "SSL_REQUIRED",
+      code: code || "SSL_REQUIRED",
+      message: 'O Supabase exige conex\xE3o criptografada. Marque a op\xE7\xE3o "Habilitar conex\xE3o criptografada SSL/TLS".',
+      recommendation: "Marque a caixa de SSL/TLS e teste novamente."
+    };
+  }
+  const networkCodes = ["ENOTFOUND", "ENETUNREACH", "EHOSTUNREACH", "EAI_AGAIN", "ETIMEDOUT"];
+  if (isDirect && (networkCodes.includes(code) || /timeout/i.test(msg))) {
+    return {
+      type: "SUPABASE_IPV6_ONLY",
+      code: code || "SUPABASE_IPV6_ONLY",
+      message: `N\xE3o foi poss\xEDvel alcan\xE7ar ${config.host}: o endere\xE7o direto do Supabase usa apenas IPv6 e a Vercel s\xF3 sai por IPv4.`,
+      recommendation: 'Use o "Session pooler" do Supabase:\n1. No Supabase, clique em Connect e escolha o m\xE9todo "Session pooler".\n2. Copie o host (aws-0-REGIAO.pooler.supabase.com), a porta (5432) e o usu\xE1rio (postgres.SEU_REF).\n3. Use esses valores aqui, com SSL marcado.'
+    };
+  }
+  if (isPooler && /tenant or user not found/i.test(msg)) {
+    return {
+      type: "SUPABASE_POOLER_USER",
+      code: code || "SUPABASE_POOLER_USER",
+      message: "O pooler do Supabase n\xE3o encontrou o projeto/usu\xE1rio informado.",
+      recommendation: 'No pooler o usu\xE1rio deve ser "postgres.SEU_REF" (ex.: postgres.abcdefghijklmnop), e n\xE3o apenas "postgres". Copie o valor exato em Connect > Session pooler.'
+    };
+  }
+  if (code === "3D000") {
+    return {
+      type: "DATABASE_DOES_NOT_EXIST",
+      code,
+      message: `O banco "${config.database}" n\xE3o existe nesse projeto do Supabase.`,
+      recommendation: 'No Supabase o nome do banco \xE9 "postgres" (o nome do projeto, como "Restaurante_teste", n\xE3o \xE9 o nome do banco). Preencha "Nome do Banco de Dados" com postgres.'
+    };
+  }
+  return null;
+}
 async function testPostgresConnection(config) {
   const startTime = Date.now();
   const client = new import_pg.default.Client({
@@ -2331,7 +2373,7 @@ async function testPostgresConnection(config) {
     user: config.username,
     password: config.password || "",
     ssl: config.ssl ? { rejectUnauthorized: false } : void 0,
-    connectionTimeoutMillis: config.timeoutMs || 3e3
+    connectionTimeoutMillis: config.timeoutMs || 8e3
   });
   try {
     await client.connect();
@@ -2351,6 +2393,18 @@ async function testPostgresConnection(config) {
     try {
       await client.end();
     } catch {
+    }
+    const supabaseIssue = describeSupabaseIssue(config, err);
+    if (supabaseIssue) {
+      return {
+        connected: false,
+        databaseExists: false,
+        latencyMs,
+        errorCode: supabaseIssue.code,
+        errorType: supabaseIssue.type,
+        message: supabaseIssue.message,
+        recommendation: supabaseIssue.recommendation
+      };
     }
     if (err.code === "3D000") {
       return {
@@ -2504,6 +2558,10 @@ var linkedDatabaseState = {
   tablesCreated: false,
   totalRecordsCount: 0
 };
+function publicDbState() {
+  const { password: _password, ...rest } = linkedDatabaseState;
+  return rest;
+}
 function savePersistedConfig(state) {
   try {
     import_fs.default.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(state, null, 2), "utf-8");
@@ -2528,7 +2586,40 @@ function tryRestorePersistedConfig() {
     console.warn("[DB Config Load Warning]:", err.message);
   }
 }
+function restoreConfigFromEnv() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return;
+  try {
+    const u = new URL(url);
+    const proto = u.protocol.replace(":", "").toLowerCase();
+    const engine = proto.startsWith("postgres") ? "postgres" : proto.startsWith("mysql") ? "mysql" : null;
+    if (!engine) {
+      console.warn("[DB Env Warning]: DATABASE_URL deve come\xE7ar com postgresql:// ou mysql://");
+      return;
+    }
+    const sslMode = (u.searchParams.get("sslmode") || "").toLowerCase();
+    linkedDatabaseState = {
+      ...linkedDatabaseState,
+      engine,
+      host: u.hostname,
+      port: Number(u.port) || (engine === "postgres" ? 5432 : 3306),
+      database: decodeURIComponent(u.pathname.replace(/^\//, "")) || (engine === "postgres" ? "postgres" : ""),
+      username: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      ssl: sslMode !== "disable",
+      status: "conectado",
+      isSimulationMode: false,
+      databaseExists: true,
+      errorMessage: void 0,
+      lastConnectedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    console.info(`[DB Env Loaded] ${engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database}`);
+  } catch (err) {
+    console.warn("[DB Env Warning]: DATABASE_URL inv\xE1lida:", err.message);
+  }
+}
 tryRestorePersistedConfig();
+restoreConfigFromEnv();
 var sqlExecutionLogs = [];
 var databaseTables = {
   tenants_companies: /* @__PURE__ */ new Map(),
@@ -2776,15 +2867,20 @@ async function runDdlOnDatabase(engine, script) {
     try {
       await client.connect();
       await client.query(script);
-      await client.end();
       return true;
     } catch (e) {
       console.warn("[DDL Run Postgres Error]:", e.message);
-      return false;
+      throw e;
+    } finally {
+      try {
+        await client.end();
+      } catch {
+      }
     }
   } else if (engine === "mysql") {
+    let conn = null;
     try {
-      const conn = await import_promise.default.createConnection({
+      conn = await import_promise.default.createConnection({
         host: linkedDatabaseState.host,
         port: linkedDatabaseState.port,
         database: linkedDatabaseState.database,
@@ -2795,11 +2891,15 @@ async function runDdlOnDatabase(engine, script) {
         connectTimeout: 1e4
       });
       await conn.query(script);
-      await conn.end();
       return true;
     } catch (e) {
       console.warn("[DDL Run MySQL Error]:", e.message);
-      return false;
+      throw e;
+    } finally {
+      try {
+        await conn?.end();
+      } catch {
+      }
     }
   }
   return false;
@@ -3371,7 +3471,7 @@ databaseRouter.post("/database/link", async (req, res) => {
   );
   return res.json({
     success: true,
-    databaseConfig: linkedDatabaseState,
+    databaseConfig: publicDbState(),
     message: simulationMode ? `Banco de dados "${database}" vinculado em MODO SIMULADO (em mem\xF3ria).` : `Banco de dados "${database}" (${engine.toUpperCase()}) em ${host}:${port} validado e vinculado com sucesso!`
   });
 });
@@ -3391,6 +3491,14 @@ databaseRouter.post("/database/create-tables", async (req, res) => {
       await runDdlOnDatabase(targetEngine, ddlScript);
     } catch (realErr) {
       console.warn("[DDL Error on external DB]", realErr.message);
+      return res.status(500).json({
+        success: false,
+        engine: targetEngine,
+        database: targetDb,
+        error: "DDL_FAILED",
+        message: `Falha ao criar as tabelas no banco "${targetDb}": ${realErr?.message || "erro desconhecido"}`,
+        recommendation: "Confira se o usu\xE1rio tem permiss\xE3o de cria\xE7\xE3o (CREATE) no schema public e se a conex\xE3o est\xE1 ativa. As tabelas N\xC3O foram criadas."
+      });
     }
   }
   initCleanDatabaseSeed();
@@ -3745,7 +3853,7 @@ databaseRouter.get("/database/all-data", async (_req, res) => {
 databaseRouter.get("/database/status", (_req, res) => {
   return res.json({
     databaseConfig: {
-      ...linkedDatabaseState,
+      ...publicDbState(),
       totalRecordsCount: calculateTotalRecords()
     },
     availableEngines: [

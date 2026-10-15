@@ -208,40 +208,82 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
     setStep(2); // Avança para a sincronização de banco
   };
 
-  // Testar Conexão com o Banco
+  // Lê a resposta como JSON; se vier HTML (ex.: API não publicada), explica o problema real
+  const readJson = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error(
+        `A API respondeu HTTP ${res.status} com uma página HTML em vez de JSON. Verifique se ${window.location.origin}/api/health responde {"status":"ok"} (a função /api pode não ter sido publicada na Vercel).`
+      );
+    }
+  };
+
+  // Testar e vincular a conexão com o banco
   const handleTestConnection = async () => {
     setIsConnecting(true);
     setConnectionStatus('idle');
     setConnectionMessage('');
 
     try {
-      const res = await fetch('/api/database/connect', {
+      // O Supabase exige SSL: ativa automaticamente para hosts supabase
+      const useSsl = ssl || /supabase\.(co|com)$/i.test(host.trim());
+      if (useSsl && !ssl) setSsl(true);
+
+      const payload = {
+        engine,
+        host: host.trim(),
+        port,
+        database: database.trim(),
+        username: username.trim(),
+        password,
+        ssl: useSsl,
+      };
+
+      // 1. Testa a conexão real com o SGBD
+      const res = await fetch('/api/database/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          engine,
-          host,
-          port,
-          database,
-          username,
-          password,
-          ssl,
-        }),
+        body: JSON.stringify(payload),
       });
+      const data = await readJson(res);
 
-      const data = await res.json();
-      if (data.success) {
-        setConnectionStatus('success');
-        setConnectionMessage(
-          `Conexão com ${engine.toUpperCase()} estabelecida com sucesso! (${data.latencyMs ? `${data.latencyMs}ms` : 'Online'})`
-        );
-      } else {
+      if (!res.ok || !data.success) {
         setConnectionStatus('error');
-        setConnectionMessage(data.error || 'Não foi possível conectar ao banco de dados informado.');
+        setConnectionMessage(
+          [data.message || 'Não foi possível conectar ao banco de dados informado.', data.recommendation]
+            .filter(Boolean)
+            .join('\n\n')
+        );
+        return;
       }
+
+      // 2. Vincula o banco ao sistema (usado pelas demais rotas)
+      const linkRes = await fetch('/api/database/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const linkData = await readJson(linkRes);
+
+      if (!linkRes.ok || !linkData.success) {
+        setConnectionStatus('error');
+        setConnectionMessage(
+          [linkData.message || 'A conexão funcionou, mas não foi possível vincular o banco.', linkData.recommendation]
+            .filter(Boolean)
+            .join('\n\n')
+        );
+        return;
+      }
+
+      setConnectionStatus('success');
+      setConnectionMessage(
+        `Conexão com ${engine.toUpperCase()} estabelecida e vinculada com sucesso! (${data.latencyMs ? `${data.latencyMs}ms` : 'Online'})`
+      );
     } catch (err: any) {
       setConnectionStatus('error');
-      setConnectionMessage(`Erro de rede ao conectar: ${err?.message || 'Falha na requisição'}`);
+      setConnectionMessage(err?.message || 'Falha na requisição');
     } finally {
       setIsConnecting(false);
     }
@@ -255,17 +297,22 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
 
     try {
       // 1. Executa o DDL de criação de tabelas
-      const runRes = await fetch('/api/database/run-script', {
+      const runRes = await fetch('/api/database/create-tables', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           engine,
-          databaseName: database,
+          database: database.trim(),
         }),
       });
 
-      const runData = await runRes.json();
-      const tablesCreated = runData.tablesCreated || 12;
+      const runData = await readJson(runRes);
+      if (!runRes.ok || !runData.success) {
+        throw new Error(
+          [runData.message || 'Falha ao criar as tabelas no banco.', runData.recommendation].filter(Boolean).join(' ')
+        );
+      }
+      const tablesCreated = runData.tablesCount || 12;
 
       // 2. Dispara a sincronização de entidades
       const targetCompany = companySaved || existingCompanies[0];
@@ -274,6 +321,9 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       };
 
       const syncRes = await syncAllDataToDatabase(syncPayload);
+      if (!syncRes.success) {
+        throw new Error(syncRes.message || 'Falha ao sincronizar os cadastros com o banco.');
+      }
 
       setSyncStatus('success');
       setSyncedRecordsCount(syncRes.recordsProcessed || tablesCreated);
@@ -808,13 +858,13 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                 {connectionStatus === 'success' && (
                   <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2 animate-in fade-in">
                     <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>{connectionMessage}</span>
+                    <span className="whitespace-pre-line">{connectionMessage}</span>
                   </div>
                 )}
                 {connectionStatus === 'error' && (
                   <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 flex items-center gap-2 animate-in fade-in">
                     <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>{connectionMessage}</span>
+                    <span className="whitespace-pre-line">{connectionMessage}</span>
                   </div>
                 )}
               </div>
@@ -861,7 +911,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                   <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                   <div>
                     <h5 className="font-bold text-rose-100">Aviso na Sincronização</h5>
-                    <p className="text-[11px] text-rose-300/90 mt-0.5">{syncMessage}</p>
+                    <p className="text-[11px] text-rose-300/90 mt-0.5 whitespace-pre-line">{syncMessage}</p>
                   </div>
                 </div>
               )}
