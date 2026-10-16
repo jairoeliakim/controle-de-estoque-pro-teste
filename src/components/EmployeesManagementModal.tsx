@@ -141,7 +141,7 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
     if (!name.trim() || !email.trim()) return;
 
     // Tenant identificador da empresa é o CNPJ sem traços
-    const tenantId = cleanActiveCnpj || (activeCompany.id ? toTenantId(activeCompany.id) : '') || activeCompany.id || '12345678000190';
+    const tenantId = cleanActiveCnpj || (activeCompany.id ? toTenantId(activeCompany.id) : '') || activeCompany.id || '00000000000001';
     const isEdit = !!editingEmployee;
     const empId = editingEmployee ? editingEmployee.id : `emp-${Date.now()}`;
 
@@ -435,7 +435,7 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
                         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-300 mt-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800">
                           <span className="flex items-center gap-1 font-mono">
                             <Lock className="w-3 h-3 text-emerald-400" />
-                            PIN de Acesso: <strong className="text-emerald-300 bg-emerald-950 px-1 rounded">@dm!n2026</strong>
+                            PIN de Acesso: <strong className="text-emerald-300 bg-emerald-950 px-1 rounded">******</strong>
                           </span>
                           <span className="text-slate-600">•</span>
                           <span className="flex items-center gap-1">

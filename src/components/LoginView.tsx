@@ -89,8 +89,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return (
           cClean === cleanCnpj ||
           idClean === cleanCnpj ||
-          (c.id === '12345678000190' && cleanCnpj === '12345678000190') ||
-          (c.id === 'comp-matriz' && cleanCnpj === '12345678000190')
+          (c.id === '00000000000001' && cleanCnpj === '00000000000001') ||
+          (c.id === 'comp-matriz' && cleanCnpj === '00000000000001')
         );
       }) || null
     );
@@ -107,7 +107,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       const uTenant = toTenantId(u.companyId || '') || u.companyId;
       return (
         uTenant === compTenant ||
-        (compTenant === '12345678000190' && (uTenant === 'comp-matriz' || uTenant === '12345678000190')) ||
+        (compTenant === '00000000000001' && (uTenant === 'comp-matriz' || uTenant === '00000000000001')) ||
         !u.companyId
       );
     });
@@ -184,7 +184,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (isAdminMode) {
       const isValidAdmin = verifyMasterAdmin(emailClean || 'admin', passClean);
       if (!isValidAdmin) {
-        setLoginError('Senha incorreta para o Super Administrador. (Padrão inicial configurado: @dm!n2026)');
+        setLoginError('Senha incorreta para o Super Administrador. (Padrão inicial configurado: ******)');
         return;
       }
 
@@ -276,7 +276,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    const targetCompanyId = regCompanyId || (matchedCompany ? matchedCompany.id : companies[0]?.id) || '12345678000190';
+    const targetCompanyId = regCompanyId || (matchedCompany ? matchedCompany.id : companies[0]?.id) || '00000000000001';
     const targetCompany = companies.find((c) => c.id === targetCompanyId) || matchedCompany || companies[0];
 
     const rawPassword = regPin.trim() || '1234';
@@ -287,9 +287,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
       id: `usr-${Date.now()}`,
       name: regName.trim(),
       email: regEmail.trim().toLowerCase(),
-      phone: regPhone.trim() || '(11) 98000-0000',
+      phone: regPhone.trim() || '(31) 99947-2865',
       role: regRole,
-      companyId: targetCompany?.id || '12345678000190',
+      companyId: targetCompany?.id || '00000000000001',
       companyName: targetCompany?.name || 'Matriz',
       pin: securePasswordHash,
       lastLogin: new Date().toISOString(),
@@ -399,7 +399,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       type="text"
                       value={cnpjInput}
                       onChange={(e) => handleCnpjChange(e.target.value)}
-                      placeholder="00.000.000/0000-00 ou 12.345.678/0001-90"
+                      placeholder="00.000.000/0000-00 ou 00.000.000/0000-00"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all font-mono"
                       required
                     />
@@ -593,7 +593,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       type={showPassword ? 'text' : 'password'}
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder={isAdminMode ? 'Senha do Administrador (@dm!n2026)' : 'Digite sua senha ou PIN'}
+                      placeholder={isAdminMode ? 'Senha do Administrador (******)' : 'Digite sua senha ou PIN'}
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all font-mono pr-10"
                       required
                     />

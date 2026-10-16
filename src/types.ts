@@ -110,7 +110,7 @@ export type StockUnit = 'kg' | 'g' | 'un' | 'pct' | 'cx' | 'l' | 'ml' | 'fd';
 
 // Multi-Empresa
 export interface Company {
-  id: string; // Tenant identificador da empresa (CNPJ sem traços: ex: 12345678000190)
+  id: string; // Tenant identificador da empresa (CNPJ sem traços: ex: 00000000000001)
   name: string;
   tradeName: string;
   cnpj: string;

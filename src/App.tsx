@@ -156,8 +156,8 @@ export default function App() {
 
   const [activeCompanyId, setActiveCompanyId] = useState<string>(() => {
     const saved = localStorage.getItem('ce_active_company_id');
-    if (saved === 'comp-matriz' || saved === 'emp-matriz') return '12345678000190';
-    return saved || '12345678000190';
+    if (saved === 'comp-matriz' || saved === 'emp-matriz') return '00000000000001';
+    return saved || '00000000000001';
   });
 
   // Funcionários por Empresa
@@ -338,8 +338,8 @@ export default function App() {
           );
           if (empUsers.length > 0) {
             const mappedEmployees: Employee[] = empUsers.map((u: any) => {
-              const rawTenant = u.tenant_id || u.companyId || '12345678000190';
-              const cleanTenant = rawTenant === 'comp-matriz' || rawTenant === 'emp-matriz' ? '12345678000190' : rawTenant;
+              const rawTenant = u.tenant_id || u.companyId || '00000000000001';
+              const cleanTenant = rawTenant === 'comp-matriz' || rawTenant === 'emp-matriz' ? '00000000000001' : rawTenant;
               return {
                 id: u.id,
                 companyId: cleanTenant,
@@ -367,11 +367,11 @@ export default function App() {
             name: u.name,
             email: u.email,
             role: u.role,
-            companyId: u.tenant_id || u.companyId || '12345678000190',
-            companyName: 'Restaurante & Bar Gourmet (Matriz)',
+            companyId: u.tenant_id || u.companyId || '00000000000001',
+            companyName: 'CEC Conecta',
             avatarUrl: '',
             phone: u.phone,
-            pin: u.pin || u.password_hash || '@dm!n2026',
+            pin: u.pin || u.password_hash || '*******',
             lastLogin: u.last_login || u.lastLogin,
           }));
           setRegisteredUsers((prev) => {
@@ -392,15 +392,15 @@ export default function App() {
         if (Array.isArray(dbData.tables.tenants_companies) && dbData.tables.tenants_companies.length > 0) {
           const mappedCompanies: Company[] = dbData.tables.tenants_companies.map((c: any) => {
             const cleanCnpj = cleanCNPJ(c.cnpj || '');
-            const tenantId = cleanCnpj || (c.id === 'comp-matriz' ? '12345678000190' : c.id);
+            const tenantId = cleanCnpj || (c.id === 'comp-matriz' ? '00000000000001' : c.id);
             return {
               id: tenantId,
               name: c.name,
               tradeName: c.trade_name || c.tradeName || c.name,
-              cnpj: c.cnpj || '12.345.678/0001-90',
+              cnpj: c.cnpj || '00.000.000/0000-00',
               paisOrigem: c.pais_origem || c.paisOrigem || 'BR',
               tipoDocumento: c.tipo_documento || c.tipoDocumento || 'CNPJ',
-              documentoIdentificador: c.documento_identificador || c.documentoIdentificador || cleanCnpj || '12345678000190',
+              documentoIdentificador: c.documento_identificador || c.documentoIdentificador || cleanCnpj || '00000000000001',
               city: c.city || '',
               state: c.state || '',
               phone: c.phone || '',
@@ -800,8 +800,8 @@ export default function App() {
 
   // Employee Handlers (Gerente & Administrador)
   const handleSaveEmployee = (emp: Employee) => {
-    const rawCompanyCnpj = (activeCompany?.cnpj ? cleanCNPJ(activeCompany.cnpj) : '') || activeCompany?.id || activeCompanyId || '12345678000190';
-    const cleanTenant = rawCompanyCnpj.replace(/^comp-matriz$|^emp-matriz$/, '12345678000190');
+    const rawCompanyCnpj = (activeCompany?.cnpj ? cleanCNPJ(activeCompany.cnpj) : '') || activeCompany?.id || activeCompanyId || '00000000000001';
+    const cleanTenant = rawCompanyCnpj.replace(/^comp-matriz$|^emp-matriz$/, '00000000000001');
 
     const fullEmp: Employee = {
       ...emp,
@@ -825,7 +825,7 @@ export default function App() {
         email: fullEmp.email,
         role: fullEmp.role,
         companyId: fullEmp.companyId,
-        companyName: activeCompany?.name || 'Restaurante & Bar Gourmet (Matriz)',
+        companyName: activeCompany?.name || 'CEC Conecta',
         phone: fullEmp.phone,
         pin: '@dm!n2026',
         lastLogin: new Date().toISOString(),
@@ -837,7 +837,7 @@ export default function App() {
     });
 
     // ALIMENTAÇÃO DA ROTA DO BANCO DE DADOS (Persistência no SGBD com hash seguro)
-    const rawPin = (fullEmp as any).pin || '@dm!n2026';
+    const rawPin = (fullEmp as any).pin || '*******';
     const secureHash = rawPin.startsWith('sha256$') ? rawPin : hashPassword(rawPin);
 
     syncEntityToDatabase('system_users', {
@@ -997,7 +997,7 @@ export default function App() {
         authUser={authUser}
         onLogout={handleLogout}
         defaultCountDays={countSchedule.defaultDays}
-        activeCompanyName={activeCompany?.name || 'Restaurante & Bar Gourmet (Matriz)'}
+        activeCompanyName={activeCompany?.name || 'CEC Conecta'}
         onOpenCompanyModal={() => setIsCompanyModalOpen(true)}
         onOpenEmployeesModal={() => setIsEmployeesModalOpen(true)}
         pendingUnlistedCount={unlistedItems.filter((i) => i.companyId === activeCompanyId && i.status === 'pendente').length}
@@ -1031,7 +1031,7 @@ export default function App() {
               <GeneralStockView
                 items={items}
                 suppliers={suppliers}
-                companyName={activeCompany?.name || 'Restaurante & Bar Gourmet'}
+                companyName={activeCompany?.name || 'Desenvolvimento de Software'}
                 currentRole={currentRole}
                 onUpdateItemStock={handleUpdateItemStock}
                 onOpenNewItemModal={() => {
@@ -1090,7 +1090,7 @@ export default function App() {
               <BudgetQuotesView
                 items={items}
                 suppliers={suppliers}
-                companyName={activeCompany?.name || 'Restaurante & Bar Gourmet'}
+                companyName={activeCompany?.name || 'Desenvolvimento de Software'}
                 currentRole={currentRole}
                 onInitiateOrderFromBudget={(supplier, itemsToOrder, quantities) => {
                   setActiveTab('compras');

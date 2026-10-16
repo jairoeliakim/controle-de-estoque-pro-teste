@@ -56,7 +56,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
   const [stateUF, setStateUF] = useState('SP');
   const [phone, setPhone] = useState('(11) 98888-7777');
   const [email, setEmail] = useState('contato@empresa.com.br');
-  const [segment, setSegment] = useState('Restaurante & Bar Gourmet');
+  const [segment, setSegment] = useState('Desenvolvimento de Software');
   const [address, setAddress] = useState('');
   const [managerName, setManagerName] = useState('Administrador Geral');
   const [companySaved, setCompanySaved] = useState<Company | null>(null);
@@ -104,7 +104,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       setStateUF(comp.state || 'SP');
       setPhone(comp.phone || '(11) 98888-7777');
       setEmail(comp.email || 'contato@empresa.com.br');
-      setSegment(comp.segment || 'Restaurante & Bar Gourmet');
+      setSegment(comp.segment || 'Desenvolvimento de Software');
     }
   }, [isOpen, existingCompanies, companySaved]);
 
@@ -183,7 +183,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
     e.preventDefault();
     if (!name.trim() || !cnpj.trim()) return;
 
-    const cleanCnpjId = cleanCNPJ(cnpj) || '12345678000190';
+    const cleanCnpjId = cleanCNPJ(cnpj) || '00000000000001';
     const newCompany: Company = {
       id: cleanCnpjId, // Tenant identificador da empresa é o CNPJ sem traços
       name: name.trim(),
@@ -340,7 +340,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
 
   // Concluir Setup
   const handleFinish = () => {
-    const finalTenantId = companySaved ? companySaved.id : existingCompanies[0]?.id || '12345678000190';
+    const finalTenantId = companySaved ? companySaved.id : existingCompanies[0]?.id || '00000000000001';
     onCompleteSetup(finalTenantId);
     onClose();
   };
@@ -599,7 +599,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                     required
                     value={tradeName}
                     onChange={(e) => setTradeName(e.target.value)}
-                    placeholder="Ex: Matriz Gourmet São Paulo"
+                    placeholder="Ex: CEC São Paulo"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-purple-400"
                   />
                 </div>
@@ -613,7 +613,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: Restaurante & Bar Gourmet Alimentos Ltda."
+                    placeholder="Ex: Desenvolvimento de Software Alimentos Ltda."
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-purple-400"
                   />
                 </div>
@@ -627,7 +627,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                     required
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="Ex: Belo Horizonte"
+                    placeholder="Ex: Patrocinio"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-purple-400"
                   />
                 </div>
@@ -655,7 +655,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                     type="text"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="(31) 3333-4444"
+                    placeholder="(34)99947-2865"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-purple-400"
                   />
                 </div>
@@ -682,7 +682,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                     onChange={(e) => setSegment(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-100 focus:outline-none focus:border-purple-400 font-semibold"
                   >
-                    <option value="Restaurante & Bar Gourmet">Restaurante & Bar Gourmet</option>
+                    <option value="Desenvolvimento de Software">Desenvolvimento de Software</option>
                     <option value="Hamburgueria Artesanal">Hamburgueria Artesanal</option>
                     <option value="Pizzaria & Forneria">Pizzaria & Forneria</option>
                     <option value="Churrascaria & Carnes Nobres">Churrascaria & Carnes Nobres</option>

@@ -497,18 +497,18 @@ const databaseTables: Record<string, Map<string, any>> = {
 };
 
 // MAPPER ROBUSTO DE DOMÍNIO -> COLUNAS SQL DO ESQUEMA DDL
-export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant = '12345678000190'): Record<string, any> {
+export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant = '00000000000001'): Record<string, any> {
   const now = new Date().toISOString();
   const resolveTenant = (rawTenant: any) => {
     const t = String(rawTenant || defaultTenant).trim();
-    if (t === 'comp-matriz' || t === 'emp-matriz') return '12345678000190';
-    return t || '12345678000190';
+    if (t === 'comp-matriz' || t === 'emp-matriz') return '00000000000001';
+    return t || '00000000000001';
   };
 
   switch (tableName) {
     case 'tenants_companies': {
-      const rawCnpj = entity.cnpj || entity.documento_identificador || entity.documentoIdentificador || '12.345.678/0001-90';
-      const cleanCnpj = cleanCNPJ(String(rawCnpj)) || '12345678000190';
+      const rawCnpj = entity.cnpj || entity.documento_identificador || entity.documentoIdentificador || '00.000.000/0000-00';
+      const cleanCnpj = cleanCNPJ(String(rawCnpj)) || '00000000000001';
       const compId = entity.id && entity.id !== 'comp-matriz' && entity.id !== 'emp-matriz'
         ? entity.id
         : cleanCnpj;
@@ -518,13 +518,13 @@ export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant 
 
       return {
         id: String(compId),
-        name: String(entity.name || 'Restaurante & Bar Gourmet (Matriz)'),
+        name: String(entity.name || 'CEC Conecta'),
         trade_name: entity.tradeName || entity.trade_name || entity.name || null,
         cnpj: String(entity.cnpj || rawCnpj),
         pais_origem: pais,
         tipo_documento: tipoDoc,
         documento_identificador: docId,
-        city: entity.city || 'Belo Horizonte',
+        city: entity.city || 'Patrocinio',
         state: entity.state || 'MG',
         phone: entity.phone || null,
         email: entity.email || null,
@@ -795,7 +795,7 @@ async function ensureDependenciesBeforeInsert(
     return;
   }
 
-  const tenantId = (mappedRow.tenant_id || '12345678000190').replace(/^comp-matriz$|^emp-matriz$/, '12345678000190');
+  const tenantId = (mappedRow.tenant_id || '00000000000001').replace(/^comp-matriz$|^emp-matriz$/, '00000000000001');
 
   // 1. Garante que a empresa tenant existe em tenants_companies
   if (tableName !== 'tenants_companies') {
@@ -803,16 +803,16 @@ async function ensureDependenciesBeforeInsert(
     if (!companyExists) {
       const defaultCompany = {
         id: tenantId,
-        name: 'Restaurante & Bar Gourmet (Matriz)',
-        trade_name: 'Matriz Gourmet',
-        cnpj: '12.345.678/0001-90',
+        name: 'CEC Conecta',
+        trade_name: 'CEC',
+        cnpj: '00.000.000/0000-00',
         pais_origem: 'BR',
         tipo_documento: 'CNPJ',
         documento_identificador: tenantId,
-        city: 'Belo Horizonte',
+        city: 'Patrocinio',
         state: 'MG',
-        phone: '(31) 3333-4444',
-        email: 'contato@gourmet.com.br',
+        phone: '(34)99947-2865',
+        email: 'jairoeliakim@hotmail.com',
         is_active: true,
         created_at: '2026-01-01T08:00:00.000Z',
         updated_at: new Date().toISOString(),
@@ -1095,20 +1095,20 @@ async function executeRealSqlDelete(
 
 // Inicialização com carga limpa padrão (empresa, categorias e admin oficial)
 function initCleanDatabaseSeed() {
-  const defaultTenantCnpj = '12345678000190';
+  const defaultTenantCnpj = '00000000000001';
   const defaultCompany = {
     id: defaultTenantCnpj,
-    name: 'Restaurante & Bar Gourmet (Matriz)',
-    trade_name: 'Matriz Gourmet',
-    tradeName: 'Matriz Gourmet',
-    cnpj: '12.345.678/0001-90',
+    name: 'CEC Conecta',
+    trade_name: 'CEC',
+    tradeName: 'CEC',
+    cnpj: '00.000.000/0000-00',
     pais_origem: 'BR',
     tipo_documento: 'CNPJ',
     documento_identificador: defaultTenantCnpj,
-    city: 'Belo Horizonte',
+    city: 'Patrocinio',
     state: 'MG',
-    phone: '(31) 3333-4444',
-    email: 'contato@gourmet.com.br',
+    phone: '(34)99947-2865',
+    email: 'jairoeliakim@hotmail.com',
     is_active: true,
     active: true,
     created_at: new Date('2026-01-01').toISOString(),
@@ -1138,7 +1138,7 @@ function initCleanDatabaseSeed() {
     });
   }
 
-  // 3. Usuário Administrador Oficial Padrão (@dm!n2026)
+  // 3. Usuário Administrador Oficial Padrão (******)
   databaseTables.system_users.set('usr-admin-01', {
     id: 'usr-admin-01',
     tenant_id: defaultTenantCnpj,
@@ -1146,7 +1146,7 @@ function initCleanDatabaseSeed() {
     email: 'admin@sistema.com',
     password_hash: '@dm!n2026',
     role: 'administrador',
-    phone: '(31) 98888-7777',
+    phone: '(31)99947-2865',
     pin: '@dm!n2026',
     is_active: true,
     created_at: new Date('2026-01-01').toISOString(),
@@ -1159,7 +1159,7 @@ function initCleanDatabaseSeed() {
     email: 'admin',
     password_hash: '@dm!n2026',
     role: 'administrador',
-    phone: '(31) 98888-7777',
+    phone: '(31)99947-2865',
     pin: '@dm!n2026',
     is_active: true,
     created_at: new Date('2026-01-01').toISOString(),
@@ -1504,7 +1504,7 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
     }
   }
 
-  // Inicializa seed limpo padrão com admin @dm!n2026 e categorias
+  // Inicializa seed limpo padrão com admin  e categorias
   initCleanDatabaseSeed();
 
   // Sincroniza todos os registros em memória existentes para o banco externo recém-criado!
@@ -1551,7 +1551,7 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
   logSql(
     'ALL_TABLES',
     'DDL',
-    `-- Execução DDL de criação de ${SYSTEM_TABLES.length} tabelas no banco ${targetDb} (${targetEngine.toUpperCase()})\n-- Usuário admin@sistema.com criado com senha @dm!n2026`,
+    `-- Execução DDL de criação de ${SYSTEM_TABLES.length} tabelas no banco ${targetDb} (${targetEngine.toUpperCase()})\n-- Usuário admin@sistema.com`,
     SYSTEM_TABLES.length
   );
 
@@ -1564,7 +1564,7 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
     tablesDetailed: SYSTEM_TABLES,
     executedAt: new Date().toISOString(),
     scriptExecuted: ddlScript,
-    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usuário administrador padrão foi inicializado com a senha @dm!n2026.`,
+    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usuário administrador padrão foi inicializado.`,
   });
 });
 
@@ -1603,7 +1603,7 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
     const fullItem = { ...rawItem, id };
 
     // 1. Mapeia as colunas com tipagem estrita para o DDL SQL
-    const mappedRow = mapEntityToSqlRow(tableName, fullItem, '12345678000190');
+    const mappedRow = mapEntityToSqlRow(tableName, fullItem, '00000000000001');
 
     // Validação Condicional de Empresas e Fornecedores (Globalizado)
     if (tableName === 'suppliers') {
@@ -1647,7 +1647,7 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
     if (tableName === 'stock_items') {
       inventoryStore.upsertProduct({
         id: mappedRow.id,
-        tenant_id: mappedRow.tenant_id || '12345678000190',
+        tenant_id: mappedRow.tenant_id || '00000000000001',
         category_id: mappedRow.category_id || 'cat-carnes',
         sku: mappedRow.barcode || `SKU-${mappedRow.id}`,
         barcode: mappedRow.barcode,
@@ -1662,7 +1662,7 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
     if (tableName === 'system_users') {
       inventoryStore.upsertUser({
         id: mappedRow.id,
-        tenant_id: mappedRow.tenant_id || '12345678000190',
+        tenant_id: mappedRow.tenant_id || '00000000000001',
         name: mappedRow.name,
         email: mappedRow.email,
         role: mappedRow.role || 'conferente',
