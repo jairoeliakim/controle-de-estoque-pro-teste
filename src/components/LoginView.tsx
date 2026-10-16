@@ -184,7 +184,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (isAdminMode) {
       const isValidAdmin = verifyMasterAdmin(emailClean || 'admin', passClean);
       if (!isValidAdmin) {
-        setLoginError('Senha incorreta para o Super Administrador. (Padrão inicial configurado: @dm!n2026)');
+        setLoginError('Senha incorreta para o Super Administrador. (Padrão inicial configurado: ******)');
         return;
       }
 
@@ -287,7 +287,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       id: `usr-${Date.now()}`,
       name: regName.trim(),
       email: regEmail.trim().toLowerCase(),
-      phone: regPhone.trim() || '(11) 98000-0000',
+      phone: regPhone.trim() || '(31) 99947-2865',
       role: regRole,
       companyId: targetCompany?.id || '00000000000001',
       companyName: targetCompany?.name || 'Matriz',

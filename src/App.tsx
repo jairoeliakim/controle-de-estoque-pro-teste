@@ -371,7 +371,7 @@ export default function App() {
             companyName: 'CEC Conecta',
             avatarUrl: '',
             phone: u.phone,
-            pin: u.pin || u.password_hash || '@dm!n2026',
+            pin: u.pin || u.password_hash || '*******',
             lastLogin: u.last_login || u.lastLogin,
           }));
           setRegisteredUsers((prev) => {
@@ -837,7 +837,7 @@ export default function App() {
     });
 
     // ALIMENTAÇÃO DA ROTA DO BANCO DE DADOS (Persistência no SGBD com hash seguro)
-    const rawPin = (fullEmp as any).pin || '@dm!n2026';
+    const rawPin = (fullEmp as any).pin || '*******';
     const secureHash = rawPin.startsWith('sha256$') ? rawPin : hashPassword(rawPin);
 
     syncEntityToDatabase('system_users', {
