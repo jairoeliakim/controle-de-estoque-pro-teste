@@ -135,12 +135,15 @@ CREATE TABLE IF NOT EXISTS system_users (
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(30) NOT NULL CHECK (role IN ('administrador', 'gerente', 'compras', 'conferente')),
     phone VARCHAR(30),
-    pin VARCHAR(10),
+    pin VARCHAR(40),
     is_active BOOLEAN DEFAULT TRUE,
     last_login TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email)
 );
+
+-- Garante tamanho suficiente do campo pin em bancos criados com a versão anterior (VARCHAR(10))
+ALTER TABLE system_users ALTER COLUMN pin TYPE VARCHAR(40);
 
 -- 3. PARAMETRIZAÇÃO SISTÊMICA & POLÍTICAS
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -417,7 +420,7 @@ CREATE TABLE IF NOT EXISTS system_users (
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(30) NOT NULL,
     phone VARCHAR(30),
-    pin VARCHAR(10),
+    pin VARCHAR(40),
     is_active TINYINT(1) DEFAULT 1,
     last_login DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -719,7 +722,7 @@ BEGIN
         password_hash NVARCHAR(255) NOT NULL,
         role NVARCHAR(30) NOT NULL,
         phone NVARCHAR(30),
-        pin NVARCHAR(10),
+        pin NVARCHAR(40),
         is_active BIT DEFAULT 1,
         last_login DATETIMEOFFSET,
         created_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),

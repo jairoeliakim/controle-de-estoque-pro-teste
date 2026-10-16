@@ -1,0 +1,17 @@
+{
+  "engine": "postgres",
+  "host": "127.0.0.1",
+  "port": 5432,
+  "database": "t_route",
+  "username": "postgres",
+  "password": "testpw",
+  "ssl": false,
+  "status": "conectado",
+  "isSimulationMode": false,
+  "databaseExists": true,
+  "tablesCreated": true,
+  "totalRecordsCount": 13,
+  "lastConnectedAt": "2026-10-16T00:08:47.025Z",
+  "tablesCount": 15,
+  "lastMigrationAt": "2026-10-16T00:08:47.434Z"
+}
