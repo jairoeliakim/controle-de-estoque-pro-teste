@@ -403,6 +403,12 @@ function publicDbState() {
 
 // Persistência em disco do arquivo de configuração (com suporte a multi-tenant)
 function savePersistedConfig(state: typeof linkedDatabaseState) {
+  // Na Vercel, arquivos locais (/tmp inclusive) são efêmeros e variam por instância.
+  // A configuração de produção deve vir de variáveis de ambiente, nunca deste arquivo.
+  if (process.env.VERCEL) {
+    console.info('[DB Config] Vercel detectada: configuração mantida por variáveis de ambiente; arquivo local não é persistente.');
+    return;
+  }
   try {
     const toSave = {
       ...state,
@@ -443,38 +449,67 @@ function tryRestorePersistedConfig() {
   }
 }
 
-// Vínculo definido por variável de ambiente (recomendado na Vercel, onde memória e disco não persistem)
-// Ex.: DATABASE_URL=postgresql://postgres.REF:SENHA@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+// Configuração persistente de produção. Na Vercel, use DATABASE_URL (preferencial)
+// ou DB_ENGINE/DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD/DB_SSL.
+// A configuração é carregada em cada instância serverless e aplicada ao tenant padrão.
 function restoreConfigFromEnv() {
+  const defaultTenantId = String(process.env.DEFAULT_TENANT_ID || '00000000000001').trim();
   const url = process.env.DATABASE_URL;
-  if (!url) return;
+
   try {
-    const u = new URL(url);
-    const proto = u.protocol.replace(':', '').toLowerCase();
-    const engine: DatabaseEngine | null = proto.startsWith('postgres') ? 'postgres' : proto.startsWith('mysql') ? 'mysql' : null;
-    if (!engine) {
-      console.warn('[DB Env Warning]: DATABASE_URL deve começar com postgresql:// ou mysql://');
-      return;
+    let config: typeof linkedDatabaseState | null = null;
+
+    if (url) {
+      const u = new URL(url);
+      const proto = u.protocol.replace(':', '').toLowerCase();
+      const engine: DatabaseEngine | null = proto.startsWith('postgres') ? 'postgres' : proto.startsWith('mysql') ? 'mysql' : null;
+      if (!engine) {
+        console.warn('[DB Env Warning]: DATABASE_URL deve começar com postgresql:// ou mysql://');
+        return;
+      }
+      const sslMode = (u.searchParams.get('sslmode') || '').toLowerCase();
+      config = {
+        ...linkedDatabaseState,
+        engine,
+        host: u.hostname,
+        port: Number(u.port) || (engine === 'postgres' ? 5432 : 3306),
+        database: decodeURIComponent(u.pathname.replace(/^\//, '')) || (engine === 'postgres' ? 'postgres' : ''),
+        username: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        ssl: sslMode ? sslMode !== 'disable' : (process.env.DB_SSL || 'true').toLowerCase() !== 'false',
+        status: 'conectado',
+        isSimulationMode: false,
+        databaseExists: true,
+        errorMessage: undefined,
+        lastConnectedAt: new Date().toISOString(),
+      };
+    } else if (process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER) {
+      const engine = (process.env.DB_ENGINE || 'postgres').toLowerCase() as DatabaseEngine;
+      config = {
+        ...linkedDatabaseState,
+        engine,
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT) || (engine === 'postgres' ? 5432 : 3306),
+        database: process.env.DB_NAME,
+        username: process.env.DB_USER,
+        password: process.env.DB_PASSWORD || '',
+        ssl: (process.env.DB_SSL || 'true').toLowerCase() !== 'false',
+        status: 'conectado',
+        isSimulationMode: false,
+        databaseExists: true,
+        errorMessage: undefined,
+        lastConnectedAt: new Date().toISOString(),
+      };
     }
-    const sslMode = (u.searchParams.get('sslmode') || '').toLowerCase();
-    linkedDatabaseState = {
-      ...linkedDatabaseState,
-      engine,
-      host: u.hostname,
-      port: Number(u.port) || (engine === 'postgres' ? 5432 : 3306),
-      database: decodeURIComponent(u.pathname.replace(/^\//, '')) || (engine === 'postgres' ? 'postgres' : ''),
-      username: decodeURIComponent(u.username),
-      password: decodeURIComponent(u.password),
-      ssl: sslMode !== 'disable',
-      status: 'conectado',
-      isSimulationMode: false,
-      databaseExists: true,
-      errorMessage: undefined,
-      lastConnectedAt: new Date().toISOString(),
-    };
-    console.info(`[DB Env Loaded] ${engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database}`);
+
+    if (!config) return;
+    linkedDatabaseState = config;
+    tenantDatabaseConfigs[defaultTenantId] = { ...config };
+    // Também cobre o identificador padrão usado em versões anteriores do aplicativo.
+    tenantDatabaseConfigs['00000000000001'] = { ...config };
+    console.info(`[DB Env Loaded] ${config.engine.toUpperCase()} configurado por ambiente em ${config.host}:${config.port}/${config.database}`);
   } catch (err: any) {
-    console.warn('[DB Env Warning]: DATABASE_URL inválida:', err.message);
+    console.warn('[DB Env Warning]: configuração de banco por ambiente inválida:', err.message);
   }
 }
 

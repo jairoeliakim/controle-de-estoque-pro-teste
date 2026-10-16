@@ -11,3 +11,6 @@ coverage/
 admin-credentials.json
 *.credentials.json
 .admin-secrets.json
+
+# Configuração local de banco com credenciais (nunca versionar)
+.database-config.json
