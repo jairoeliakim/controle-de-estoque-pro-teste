@@ -1583,7 +1583,7 @@ export const InvoiceImporterView: React.FC<InvoiceImporterViewProps> = ({
                       type="text"
                       value={qrLinkInput}
                       onChange={(e) => setQrLinkInput(e.target.value)}
-                      placeholder="Ex: https://www.sefaz.sp.gov.br/nfce/qrcode?p=35260912345678000190550010001428571098765432|2|1|1|..."
+                      placeholder="Ex: https://www.sefaz.sp.gov.br/nfce/qrcode?p=35260900000000000001550010001428571098765432|2|1|1|..."
                       className="flex-1 px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-xs font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
                     />
                     <button
@@ -2395,7 +2395,7 @@ export const InvoiceImporterView: React.FC<InvoiceImporterViewProps> = ({
           setIsPrintModalOpen(false);
           setPrintingOrder(null);
         }}
-        companyName="Restaurante & Bar Gourmet"
+        companyName="Desenvolvimento de Software"
         supplier={allSuppliers.find((s) => s.id === printingOrder?.supplierId)}
       />
     </div>

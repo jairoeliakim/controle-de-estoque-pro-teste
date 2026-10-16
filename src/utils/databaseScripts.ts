@@ -367,22 +367,22 @@ CREATE INDEX IF NOT EXISTS idx_invoices_access_key ON invoices_history(tenant_id
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USUÁRIO ADMINISTRADOR PADRÃO
--- Senha Inicial de Primeiro Acesso: @dm!n2026
+-- Senha Inicial de Primeiro Acesso: ******
 -- ==============================================================================
 INSERT INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('12345678000190', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', TRUE)
+VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('comp-matriz', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', TRUE)
+VALUES ('comp-matriz', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-01', '12345678000190', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
+VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, pin = EXCLUDED.pin;
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-alias', '12345678000190', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
+VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, pin = EXCLUDED.pin;`;
   }
 
@@ -666,20 +666,20 @@ CREATE TABLE IF NOT EXISTS invoices_history (
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USUÁRIO ADMINISTRADOR PADRÃO
--- Senha Inicial de Primeiro Acesso: @dm!n2026
+-- Senha Inicial de Primeiro Acesso: ******
 -- ==============================================================================
 INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('12345678000190', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', 1);
+VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
 
 INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('comp-matriz', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', 1);
+VALUES ('comp-matriz', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-01', '12345678000190', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
+VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), pin = VALUES(pin);
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-alias', '12345678000190', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
+VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), pin = VALUES(pin);`;
   }
 
@@ -988,24 +988,24 @@ END;
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USUÁRIO ADMINISTRADOR PADRÃO
--- Senha Inicial de Primeiro Acesso: @dm!n2026
+-- Senha Inicial de Primeiro Acesso: ******
 -- ==============================================================================
-IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = '12345678000190')
+IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = '00000000000001')
 BEGIN
     INSERT INTO dbo.tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-    VALUES ('12345678000190', N'Restaurante & Bar Gourmet (Matriz)', N'Matriz Gourmet', N'12.345.678/0001-90', N'BR', N'CNPJ', N'12345678000190', N'Belo Horizonte', N'MG', N'(31) 3333-4444', N'contato@gourmet.com.br', 1);
+    VALUES ('00000000000001', N'CEC Conecta', N'CEC', N'00.000.000/0000-00', N'BR', N'CNPJ', N'00000000000001', N'Patrocinio', N'MG', N'(34)99947-2865', N'jairoeliakim@hotmail.com', 1);
 END;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = 'comp-matriz')
 BEGIN
     INSERT INTO dbo.tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-    VALUES ('comp-matriz', N'Restaurante & Bar Gourmet (Matriz)', N'Matriz Gourmet', N'12.345.678/0001-90', N'BR', N'CNPJ', N'12345678000190', N'Belo Horizonte', N'MG', N'(31) 3333-4444', N'contato@gourmet.com.br', 1);
+    VALUES ('comp-matriz', N'CEC Conecta', N'CEC', N'00.000.000/0000-00', N'BR', N'CNPJ', N'00000000000001', N'Patrocinio', N'MG', N'(34)99947-2865', N'jairoeliakim@hotmail.com', 1);
 END;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.system_users WHERE email = 'admin@sistema.com')
 BEGIN
     INSERT INTO dbo.system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-    VALUES ('usr-admin-01', '12345678000190', N'Administrador do Sistema', N'admin@sistema.com', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
+    VALUES ('usr-admin-01', '00000000000001', N'Administrador do Sistema', N'admin@sistema.com', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
 END
 ELSE
 BEGIN
@@ -1015,7 +1015,7 @@ END;
 IF NOT EXISTS (SELECT 1 FROM dbo.system_users WHERE email = 'admin')
 BEGIN
     INSERT INTO dbo.system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-    VALUES ('usr-admin-alias', '12345678000190', N'Administrador do Sistema', N'admin', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
+    VALUES ('usr-admin-alias', '00000000000001', N'Administrador do Sistema', N'admin', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
 END
 ELSE
 BEGIN

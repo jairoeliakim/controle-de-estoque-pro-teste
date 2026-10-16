@@ -15,18 +15,18 @@ import {
 // Empresa Matriz padrão (corresponde ao seed do banco de dados relacional com tenant CNPJ sem traços)
 export const INITIAL_COMPANIES: Company[] = [
   {
-    id: '12345678000190',
-    name: 'Restaurante & Bar Gourmet (Matriz)',
-    tradeName: 'Matriz Gourmet',
-    cnpj: '12.345.678/0001-90',
+    id: '00000000000001',
+    name: 'CEC Conecta',
+    tradeName: 'CEC',
+    cnpj: '00.000.000/0000-00',
     paisOrigem: 'BR',
     tipoDocumento: 'CNPJ',
-    documentoIdentificador: '12345678000190',
-    city: 'Belo Horizonte',
+    documentoIdentificador: '00000000000001',
+    city: 'Patrocinio',
     state: 'MG',
-    phone: '(31) 3333-4444',
-    email: 'contato@gourmet.com.br',
-    segment: 'Restaurante & Bar Gourmet',
+    phone: '(34)99947-2865',
+    email: 'jairoeliakim@hotmail.com',
+    segment: 'Desenvolvimento de Software',
     active: true,
     createdAt: '2026-01-01T08:00:00.000Z',
     address: 'Av. Afonso Pena, 1500 - Centro',
@@ -92,7 +92,7 @@ export const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
     engine: 'postgres',
     host: 'localhost',
     port: 5432,
-    database: 'restaurante_estoque_db',
+    database: '',
     username: 'postgres',
     password: '',
     ssl: false,
@@ -105,15 +105,15 @@ export const INITIAL_SYSTEM_SETTINGS: SystemSettings = {
 };
 
 // Usuário Administrador padrão para o primeiro acesso
-// Conforme solicitado: senha @dm!n2026
+// Conforme solicitado: ******
 export const INITIAL_DEMO_USERS: AuthUser[] = [
   {
     id: 'usr-admin-01',
     name: 'Administrador do Sistema',
     email: 'admin@sistema.com',
     role: 'administrador',
-    companyId: '12345678000190',
-    companyName: 'Restaurante & Bar Gourmet (Matriz)',
+    companyId: '00000000000001',
+    companyName: 'CEC Conecta',
     avatarUrl: '',
     phone: '(31) 98888-7777',
     pin: '@dm!n2026',

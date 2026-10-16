@@ -114,15 +114,15 @@ class InventoryDatabaseStore {
   private seedInitialData() {
     // Tenant Padrão (Empresa Matriz com CNPJ sem traços)
     const defaultTenant: Tenant = {
-      id: '12345678000190',
-      name: 'Restaurante & Bar Gourmet (Matriz)',
-      document: '12.345.678/0001-90',
+      id: '00000000000001',
+      name: 'CEC Conecta',
+      document: '00.000.000/0000-00',
       created_at: new Date('2026-01-01').toISOString(),
     };
     this.tenants.set(defaultTenant.id, defaultTenant);
     this.tenants.set('comp-matriz', { ...defaultTenant, id: 'comp-matriz' });
 
-    // Usuário Administrador Padrão (@dm!n2026)
+    // Usuário Administrador Padrão (******)
     const adminUser: User = {
       id: 'usr-admin-01',
       tenant_id: defaultTenant.id,

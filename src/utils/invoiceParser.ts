@@ -71,7 +71,7 @@ export function extractAccessKey(input: string): string | null {
   const cleanInput = input.trim();
 
   // Caso 1: URL de QR Code da SEFAZ (contém ?p= ou /qrcode?p=)
-  // Exemplo: https://www.sefaz.sp.gov.br/nfce/qrcode?p=35260912345678000190550010001428571098765432|2|1|1|...
+  // Exemplo: https://www.sefaz.sp.gov.br/nfce/qrcode?p=35260900000000000001550010001428571098765432|2|1|1|...
   if (cleanInput.includes('?p=') || cleanInput.includes('&p=')) {
     const pParam = cleanInput.split(/[?&]p=/)[1];
     if (pParam) {
@@ -351,7 +351,7 @@ export const DEMO_INVOICES: {
   data: (stockItems: StockItem[], suppliers: Supplier[]) => InvoiceData;
 }[] = [
   {
-    key: '35260912345678000190550010001428571098765432',
+    key: '35260900000000000001550010001428571098765432',
     title: 'NF-e 142857 - Distribuidora Alimentos Gourmet',
     supplierName: 'Distribuidora Alimentos Gourmet & Fritos',
     description: 'Entrada de batatas congeladas, camarão empanado e queijo coalho com preços atualizados.',
@@ -364,12 +364,12 @@ export const DEMO_INVOICES: {
 
       return {
         id: `demo-nfe-1-${Date.now()}`,
-        accessKey: '35260912345678000190550010001428571098765432',
+        accessKey: '35260900000000000001550010001428571098765432',
         number: '142857',
         series: '1',
         issueDate: new Date().toISOString(),
         natureOfOperation: 'Venda de mercadoria adquirida de terceiros',
-        supplierCnpj: sup?.cnpj || '12.345.678/0001-90',
+        supplierCnpj: sup?.cnpj || '00.000.000/0000-00',
         supplierName: sup?.name || 'Distribuidora Alimentos Gourmet & Fritos LTDA',
         supplierTradeName: 'Alimentos Gourmet Express',
         supplierPhone: sup?.phone || '5511988887777',
@@ -646,7 +646,7 @@ export const DEMO_INVOICES: {
         series: '1',
         issueDate: new Date().toISOString(),
         natureOfOperation: 'Venda de mercadoria',
-        supplierCnpj: sup?.cnpj || '12.345.678/0001-90',
+        supplierCnpj: sup?.cnpj || '00.000.000/0000-00',
         supplierName: sup?.name || 'Distribuidora Alimentos Gourmet & Fritos LTDA',
         supplierTradeName: 'Alimentos Gourmet Express',
         supplierPhone: sup?.phone || '5511988887777',

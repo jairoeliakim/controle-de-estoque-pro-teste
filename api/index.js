@@ -112,9 +112,9 @@ var BillingDatabaseStore = class _BillingDatabaseStore {
     SAAS_PLANS.forEach((plan) => this.plans.set(plan.id, plan));
     const defaultTenant = {
       id: "tenant-restaurante-01",
-      name: "Restaurante & Bar Gourmet",
+      name: "Desenvolvimento de Software",
       email: "financeiro@restaurantedemo.com.br",
-      cnpj: "12.345.678/0001-90",
+      cnpj: "00.000.000/0000-00",
       phone: "5511987654321",
       gateway_customer_id: "cus_asaas_00192847",
       created_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1e3).toISOString(),
@@ -231,7 +231,7 @@ var BillingDatabaseStore = class _BillingDatabaseStore {
   checkSubscriptionAccess(tenantId = "tenant-restaurante-01") {
     const tenant = this.getTenant(tenantId) || {
       id: tenantId,
-      name: "Restaurante & Bar Gourmet",
+      name: "Desenvolvimento de Software",
       email: "financeiro@restaurantedemo.com.br",
       gateway_customer_id: "cus_default",
       created_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -767,9 +767,9 @@ var InventoryDatabaseStore = class {
   }
   seedInitialData() {
     const defaultTenant = {
-      id: "12345678000190",
-      name: "Restaurante & Bar Gourmet (Matriz)",
-      document: "12.345.678/0001-90",
+      id: "00000000000001",
+      name: "CEC Conecta",
+      document: "00.000.000/0000-00",
       created_at: (/* @__PURE__ */ new Date("2026-01-01")).toISOString()
     };
     this.tenants.set(defaultTenant.id, defaultTenant);
@@ -1465,22 +1465,22 @@ CREATE INDEX IF NOT EXISTS idx_invoices_access_key ON invoices_history(tenant_id
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USU\xC1RIO ADMINISTRADOR PADR\xC3O
--- Senha Inicial de Primeiro Acesso: @dm!n2026
+-- Senha Inicial de Primeiro Acesso: *******
 -- ==============================================================================
 INSERT INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('12345678000190', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', TRUE)
+VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('comp-matriz', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', TRUE)
+VALUES ('comp-matriz', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-01', '12345678000190', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
+VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, pin = EXCLUDED.pin;
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-alias', '12345678000190', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
+VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, pin = EXCLUDED.pin;`;
   }
   if (engine === "mysql") {
@@ -1763,20 +1763,20 @@ CREATE TABLE IF NOT EXISTS invoices_history (
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USU\xC1RIO ADMINISTRADOR PADR\xC3O
--- Senha Inicial de Primeiro Acesso: @dm!n2026
+-- Senha Inicial de Primeiro Acesso: ******
 -- ==============================================================================
 INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('12345678000190', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', 1);
+VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
 
 INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-VALUES ('comp-matriz', 'Restaurante & Bar Gourmet (Matriz)', 'Matriz Gourmet', '12.345.678/0001-90', 'BR', 'CNPJ', '12345678000190', 'Belo Horizonte', 'MG', '(31) 3333-4444', 'contato@gourmet.com.br', 1);
+VALUES ('comp-matriz', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-01', '12345678000190', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
+VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), pin = VALUES(pin);
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-alias', '12345678000190', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
+VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), pin = VALUES(pin);`;
   }
   return `-- ==============================================================================
@@ -2083,24 +2083,24 @@ END;
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USU\xC1RIO ADMINISTRADOR PADR\xC3O
--- Senha Inicial de Primeiro Acesso: @dm!n2026
+-- Senha Inicial de Primeiro Acesso:******
 -- ==============================================================================
-IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = '12345678000190')
+IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = '00000000000001')
 BEGIN
     INSERT INTO dbo.tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-    VALUES ('12345678000190', N'Restaurante & Bar Gourmet (Matriz)', N'Matriz Gourmet', N'12.345.678/0001-90', N'BR', N'CNPJ', N'12345678000190', N'Belo Horizonte', N'MG', N'(31) 3333-4444', N'contato@gourmet.com.br', 1);
+    VALUES ('00000000000001', N'CEC Conecta', N'CEC', N'00.000.000/0000-00', N'BR', N'CNPJ', N'00000000000001', N'Patrocinio', N'MG', N'(34)99947-2865', N'jairoeliakim@hotmail.com', 1);
 END;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = 'comp-matriz')
 BEGIN
     INSERT INTO dbo.tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
-    VALUES ('comp-matriz', N'Restaurante & Bar Gourmet (Matriz)', N'Matriz Gourmet', N'12.345.678/0001-90', N'BR', N'CNPJ', N'12345678000190', N'Belo Horizonte', N'MG', N'(31) 3333-4444', N'contato@gourmet.com.br', 1);
+    VALUES ('comp-matriz', N'CEC Conecta', N'CEC', N'00.000.000/0000-00', N'BR', N'CNPJ', N'00000000000001', N'Patrocinio', N'MG', N'(34)99947-2865', N'jairoeliakim@hotmail.com', 1);
 END;
 
 IF NOT EXISTS (SELECT 1 FROM dbo.system_users WHERE email = 'admin@sistema.com')
 BEGIN
     INSERT INTO dbo.system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-    VALUES ('usr-admin-01', '12345678000190', N'Administrador do Sistema', N'admin@sistema.com', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
+    VALUES ('usr-admin-01', '00000000000001', N'Administrador do Sistema', N'admin@sistema.com', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
 END
 ELSE
 BEGIN
@@ -2110,7 +2110,7 @@ END;
 IF NOT EXISTS (SELECT 1 FROM dbo.system_users WHERE email = 'admin')
 BEGIN
     INSERT INTO dbo.system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-    VALUES ('usr-admin-alias', '12345678000190', N'Administrador do Sistema', N'admin', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
+    VALUES ('usr-admin-alias', '00000000000001', N'Administrador do Sistema', N'admin', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
 END
 ELSE
 BEGIN
@@ -2641,30 +2641,30 @@ var databaseTables = {
   purchase_order_items: /* @__PURE__ */ new Map(),
   invoices_history: /* @__PURE__ */ new Map()
 };
-function mapEntityToSqlRow(tableName, entity, defaultTenant = "12345678000190") {
+function mapEntityToSqlRow(tableName, entity, defaultTenant = "00000000000001") {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const resolveTenant = (rawTenant) => {
     const t = String(rawTenant || defaultTenant).trim();
-    if (t === "comp-matriz" || t === "emp-matriz") return "12345678000190";
-    return t || "12345678000190";
+    if (t === "comp-matriz" || t === "emp-matriz") return "00000000000001";
+    return t || "00000000000001";
   };
   switch (tableName) {
     case "tenants_companies": {
-      const rawCnpj = entity.cnpj || entity.documento_identificador || entity.documentoIdentificador || "12.345.678/0001-90";
-      const cleanCnpj = cleanCNPJ(String(rawCnpj)) || "12345678000190";
+      const rawCnpj = entity.cnpj || entity.documento_identificador || entity.documentoIdentificador || "00.000.000/0000-00";
+      const cleanCnpj = cleanCNPJ(String(rawCnpj)) || "00000000000001";
       const compId = entity.id && entity.id !== "comp-matriz" && entity.id !== "emp-matriz" ? entity.id : cleanCnpj;
       const pais = String(entity.paisOrigem || entity.pais_origem || "BR").toUpperCase().slice(0, 2);
       const tipoDoc = String(entity.tipoDocumento || entity.tipo_documento || (pais === "BR" ? "CNPJ" : "TAX_ID")).slice(0, 20);
       const docId = String(entity.documentoIdentificador || entity.documento_identificador || (pais === "BR" ? cleanCnpj : rawCnpj)).slice(0, 35);
       return {
         id: String(compId),
-        name: String(entity.name || "Restaurante & Bar Gourmet (Matriz)"),
+        name: String(entity.name || "CEC Conecta"),
         trade_name: entity.tradeName || entity.trade_name || entity.name || null,
         cnpj: String(entity.cnpj || rawCnpj),
         pais_origem: pais,
         tipo_documento: tipoDoc,
         documento_identificador: docId,
-        city: entity.city || "Belo Horizonte",
+        city: entity.city || "Patrocinio",
         state: entity.state || "MG",
         phone: entity.phone || null,
         email: entity.email || null,
@@ -2911,22 +2911,22 @@ async function ensureDependenciesBeforeInsert(engine, tableName, mappedRow) {
   if (linkedDatabaseState.isSimulationMode || linkedDatabaseState.status !== "conectado") {
     return;
   }
-  const tenantId = (mappedRow.tenant_id || "12345678000190").replace(/^comp-matriz$|^emp-matriz$/, "12345678000190");
+  const tenantId = (mappedRow.tenant_id || "00000000000001").replace(/^comp-matriz$|^emp-matriz$/, "00000000000001");
   if (tableName !== "tenants_companies") {
     const companyExists = await checkRowExistsInDb(engine, "tenants_companies", tenantId);
     if (!companyExists) {
       const defaultCompany = {
         id: tenantId,
-        name: "Restaurante & Bar Gourmet (Matriz)",
-        trade_name: "Matriz Gourmet",
-        cnpj: "12.345.678/0001-90",
+        name: "CEC Conecta",
+        trade_name: "CEC",
+        cnpj: "00.000.000/0000-00",
         pais_origem: "BR",
         tipo_documento: "CNPJ",
         documento_identificador: tenantId,
-        city: "Belo Horizonte",
+        city: "Patrocinio",
         state: "MG",
-        phone: "(31) 3333-4444",
-        email: "contato@gourmet.com.br",
+        phone: "(34)99947-2865",
+        email: "jairoeliakim@hotmail.com",
         is_active: true,
         created_at: "2026-01-01T08:00:00.000Z",
         updated_at: (/* @__PURE__ */ new Date()).toISOString()
@@ -3158,20 +3158,20 @@ async function executeRealSqlDelete(engine, tableName, id) {
   return { success: true, sqlExecuted: sql };
 }
 function initCleanDatabaseSeed() {
-  const defaultTenantCnpj = "12345678000190";
+  const defaultTenantCnpj = "00000000000001";
   const defaultCompany = {
     id: defaultTenantCnpj,
-    name: "Restaurante & Bar Gourmet (Matriz)",
-    trade_name: "Matriz Gourmet",
-    tradeName: "Matriz Gourmet",
-    cnpj: "12.345.678/0001-90",
+    name: "CEC Conecta",
+    trade_name: "CEC",
+    tradeName: "CEC",
+    cnpj: "00.000.000/0000-00",
     pais_origem: "BR",
     tipo_documento: "CNPJ",
     documento_identificador: defaultTenantCnpj,
-    city: "Belo Horizonte",
+    city: "Patrocinio",
     state: "MG",
-    phone: "(31) 3333-4444",
-    email: "contato@gourmet.com.br",
+    phone: "(34)99947-2865",
+    email: "jairoeliakim@hotmail.com",
     is_active: true,
     active: true,
     created_at: (/* @__PURE__ */ new Date("2026-01-01")).toISOString()
@@ -3541,7 +3541,7 @@ databaseRouter.post("/database/create-tables", async (req, res) => {
     "ALL_TABLES",
     "DDL",
     `-- Execu\xE7\xE3o DDL de cria\xE7\xE3o de ${SYSTEM_TABLES.length} tabelas no banco ${targetDb} (${targetEngine.toUpperCase()})
--- Usu\xE1rio admin@sistema.com criado com senha @dm!n2026`,
+-- Usu\xE1rio admin@sistema.com criado`,
     SYSTEM_TABLES.length
   );
   return res.json({
@@ -3553,7 +3553,7 @@ databaseRouter.post("/database/create-tables", async (req, res) => {
     tablesDetailed: SYSTEM_TABLES,
     executedAt: (/* @__PURE__ */ new Date()).toISOString(),
     scriptExecuted: ddlScript,
-    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usu\xE1rio administrador padr\xE3o foi inicializado com a senha @dm!n2026.`
+    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usu\xE1rio administrador padr\xE3o foi inicializado com a senha ******.`
   });
 });
 databaseRouter.post("/database/insert/:table", async (req, res) => {
@@ -3580,7 +3580,7 @@ databaseRouter.post("/database/insert/:table", async (req, res) => {
   for (const rawItem of itemsToInsert) {
     const id = rawItem.id || `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const fullItem = { ...rawItem, id };
-    const mappedRow = mapEntityToSqlRow(tableName, fullItem, "12345678000190");
+    const mappedRow = mapEntityToSqlRow(tableName, fullItem, "00000000000001");
     if (tableName === "suppliers") {
       const pais = String(mappedRow.pais_origem || "BR").toUpperCase();
       const doc = String(mappedRow.documento_identificador || mappedRow.cnpj || "").trim();
@@ -3615,7 +3615,7 @@ databaseRouter.post("/database/insert/:table", async (req, res) => {
     if (tableName === "stock_items") {
       inventoryStore.upsertProduct({
         id: mappedRow.id,
-        tenant_id: mappedRow.tenant_id || "12345678000190",
+        tenant_id: mappedRow.tenant_id || "00000000000001",
         category_id: mappedRow.category_id || "cat-carnes",
         sku: mappedRow.barcode || `SKU-${mappedRow.id}`,
         barcode: mappedRow.barcode,
@@ -3629,7 +3629,7 @@ databaseRouter.post("/database/insert/:table", async (req, res) => {
     if (tableName === "system_users") {
       inventoryStore.upsertUser({
         id: mappedRow.id,
-        tenant_id: mappedRow.tenant_id || "12345678000190",
+        tenant_id: mappedRow.tenant_id || "00000000000001",
         name: mappedRow.name,
         email: mappedRow.email,
         role: mappedRow.role || "conferente",

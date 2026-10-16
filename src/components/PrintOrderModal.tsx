@@ -31,8 +31,8 @@ export const PrintOrderModal: React.FC<PrintOrderModalProps> = ({
   order,
   isOpen,
   onClose,
-  companyName = 'Restaurante & Bar Gourmet',
-  companyCnpj = '12.345.678/0001-90',
+  companyName = 'Desenvolvimento de Software',
+  companyCnpj = '00.000.000/0000-00',
   supplier,
 }) => {
   const [copied, setCopied] = useState(false);

@@ -452,7 +452,7 @@ export const BillingSimulationDrawer: React.FC = () => {
 
         {/* Footer */}
         <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span>Tenant: <strong className="text-slate-300">Restaurante & Bar Gourmet</strong></span>
+          <span>Tenant: <strong className="text-slate-300">Desenvolvimento de Software</strong></span>
           <button
             type="button"
             onClick={() => setIsSimulationOpen(false)}

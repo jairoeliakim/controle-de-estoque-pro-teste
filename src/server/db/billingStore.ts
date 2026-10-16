@@ -91,9 +91,9 @@ export class BillingDatabaseStore {
     // 2. Tenant Padrão (Restaurante em produção)
     const defaultTenant: Tenant = {
       id: 'tenant-restaurante-01',
-      name: 'Restaurante & Bar Gourmet',
+      name: 'Desenvolvimento de Software',
       email: 'financeiro@restaurantedemo.com.br',
-      cnpj: '12.345.678/0001-90',
+      cnpj: '00.000.000/0000-00',
       phone: '5511987654321',
       gateway_customer_id: 'cus_asaas_00192847',
       created_at: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
@@ -237,7 +237,7 @@ export class BillingDatabaseStore {
   public checkSubscriptionAccess(tenantId = 'tenant-restaurante-01'): SubscriptionCheckResult {
     const tenant = this.getTenant(tenantId) || {
       id: tenantId,
-      name: 'Restaurante & Bar Gourmet',
+      name: 'Desenvolvimento de Software',
       email: 'financeiro@restaurantedemo.com.br',
       gateway_customer_id: 'cus_default',
       created_at: new Date().toISOString(),

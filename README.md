@@ -11,9 +11,7 @@ O sistema e os scripts de criação do banco de dados inicializam com um único 
 | Campo | Valor Padrão |
 | :--- | :--- |
 | **E-mail / Usuário** | `admin@sistema.com` *(ou simplesmente `admin`)* |
-| **Senha Inicial Padrão** | `@dm!n2026` |
 | **Nível de Acesso** | **Administrador do Sistema** |
-| **Empresa Matriz** | Restaurante & Bar Gourmet (Matriz) |
 
 > 🔒 **Dica de Segurança**: Após efetuar o primeiro acesso e parametrizar o sistema, recomendamos alterar a senha padrão e cadastrar os acessos individuais dos colaboradores de sua equipe.
 
@@ -24,7 +22,7 @@ O sistema e os scripts de criação do banco de dados inicializam com um único 
 Para garantir a governança e o fluxo de trabalho seguro, siga esta ordem recomendada de configuração inicial:
 
 ### Passo 1: Vincular o Banco de Dados Relacional
-1. Faça login como **Administrador** (`admin@sistema.com` / `@dm!n2026`).
+1. Faça login como **Administrador** (`admin@sistema.com` / ).
 2. Acesse o menu superior **Configurações do Sistema** (ícone de engrenagem) > **Aba 5: Vincular Banco de Dados**.
 3. Selecione o motor do seu banco (**PostgreSQL**, **MySQL** ou **SQL Server**).
 4. Informe o Host/IP, Porta, Nome do Banco, Usuário e Senha.

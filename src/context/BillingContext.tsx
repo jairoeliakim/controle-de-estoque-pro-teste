@@ -68,7 +68,7 @@ export const BillingProvider: React.FC<{ children: React.ReactNode }> = ({ child
           },
           tenant: {
             id: 'tenant-restaurante-01',
-            name: 'Restaurante & Bar Gourmet',
+            name: 'Desenvolvimento de Software',
             email: 'financeiro@restaurantedemo.com.br',
             gateway_customer_id: 'cus_demo',
             created_at: new Date().toISOString(),

@@ -76,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
   authUser,
   onLogout,
   defaultCountDays,
-  activeCompanyName = 'Restaurante & Bar Gourmet',
+  activeCompanyName = 'Desenvolvimento de Software',
   onOpenCompanyModal,
   onOpenEmployeesModal,
   pendingUnlistedCount = 0,

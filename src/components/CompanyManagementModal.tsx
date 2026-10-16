@@ -75,7 +75,7 @@ export const CompanyManagementModal: React.FC<CompanyManagementModalProps> = ({
     setStateUF('SP');
     setPhone('(11) 9');
     setEmail('');
-    setSegment('Restaurante & Bar Gourmet');
+    setSegment('Desenvolvimento de Software');
     setAddress('');
     setManagerName('');
     setReceitaError(null);
@@ -164,7 +164,7 @@ export const CompanyManagementModal: React.FC<CompanyManagementModalProps> = ({
     if (!name.trim() || !cnpj.trim()) return;
 
     const cleanCnpjId = cleanCNPJ(cnpj);
-    const tenantId = cleanCnpjId || (editingCompany?.id ? toTenantId(editingCompany.id) || editingCompany.id : '12345678000190');
+    const tenantId = cleanCnpjId || (editingCompany?.id ? toTenantId(editingCompany.id) || editingCompany.id : '00000000000001');
 
     const newCompany: Company = {
       id: tenantId, // Tenant identificador da empresa é o CNPJ sem traços

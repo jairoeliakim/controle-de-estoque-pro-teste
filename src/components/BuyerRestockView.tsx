@@ -62,7 +62,7 @@ export const BuyerRestockView: React.FC<BuyerRestockViewProps> = ({
   suppliers,
   onOrderCreated,
   ordersHistory,
-  restaurantName = 'Restaurante & Bar Gourmet',
+  restaurantName = 'Desenvolvimento de Software',
   currentRole,
   onSwitchRole,
   onOpenInvoiceImporter,
