@@ -1476,11 +1476,11 @@ VALUES ('comp-matriz', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ',
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
+VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31)99947-2865', '[PROTEGIDO]', TRUE)
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, pin = EXCLUDED.pin;
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', TRUE)
+VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31)99947-2865', '[PROTEGIDO]', TRUE)
 ON CONFLICT (tenant_id, email) DO UPDATE SET password_hash = EXCLUDED.password_hash, pin = EXCLUDED.pin;`;
   }
   if (engine === "mysql") {
@@ -1772,11 +1772,11 @@ INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, t
 VALUES ('comp-matriz', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
+VALUES ('usr-admin-01', '00000000000001', 'Administrador do Sistema', 'admin@sistema.com', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31)99947-2865', '[PROTEGIDO]', 1)
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), pin = VALUES(pin);
 
 INSERT INTO system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31) 98888-7777', '[PROTEGIDO]', 1)
+VALUES ('usr-admin-alias', '00000000000001', 'Administrador do Sistema', 'admin', 'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', 'administrador', '(31)99947-2865', '[PROTEGIDO]', 1)
 ON DUPLICATE KEY UPDATE password_hash = VALUES(password_hash), pin = VALUES(pin);`;
   }
   return `-- ==============================================================================
@@ -2100,7 +2100,7 @@ END;
 IF NOT EXISTS (SELECT 1 FROM dbo.system_users WHERE email = 'admin@sistema.com')
 BEGIN
     INSERT INTO dbo.system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-    VALUES ('usr-admin-01', '00000000000001', N'Administrador do Sistema', N'admin@sistema.com', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
+    VALUES ('usr-admin-01', '00000000000001', N'Administrador do Sistema', N'admin@sistema.com', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31)99947-2865', N'[PROTEGIDO]', 1);
 END
 ELSE
 BEGIN
@@ -2110,7 +2110,7 @@ END;
 IF NOT EXISTS (SELECT 1 FROM dbo.system_users WHERE email = 'admin')
 BEGIN
     INSERT INTO dbo.system_users (id, tenant_id, name, email, password_hash, role, phone, pin, is_active)
-    VALUES ('usr-admin-alias', '00000000000001', N'Administrador do Sistema', N'admin', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31) 98888-7777', N'[PROTEGIDO]', 1);
+    VALUES ('usr-admin-alias', '00000000000001', N'Administrador do Sistema', N'admin', N'sha256$ce_cmv_salt_2026$abddd00398b080c4ec8b922cb993aaf26c54d56a637ef896d504cd012079dd20', N'administrador', N'(31)99947-2865', N'[PROTEGIDO]', 1);
 END
 ELSE
 BEGIN
@@ -3203,7 +3203,7 @@ function initCleanDatabaseSeed() {
     email: "admin@sistema.com",
     password_hash: "@dm!n2026",
     role: "administrador",
-    phone: "(31) 98888-7777",
+    phone: "(31)99947-2865",
     pin: "@dm!n2026",
     is_active: true,
     created_at: (/* @__PURE__ */ new Date("2026-01-01")).toISOString()
@@ -3215,7 +3215,7 @@ function initCleanDatabaseSeed() {
     email: "admin",
     password_hash: "@dm!n2026",
     role: "administrador",
-    phone: "(31) 98888-7777",
+    phone: "(31)99947-2865",
     pin: "@dm!n2026",
     is_active: true,
     created_at: (/* @__PURE__ */ new Date("2026-01-01")).toISOString()

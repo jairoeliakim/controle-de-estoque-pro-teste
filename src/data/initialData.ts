@@ -115,7 +115,7 @@ export const INITIAL_DEMO_USERS: AuthUser[] = [
     companyId: '00000000000001',
     companyName: 'CEC Conecta',
     avatarUrl: '',
-    phone: '(31) 98888-7777',
+    phone: '(31)99947-2865',
     pin: '@dm!n2026',
     lastLogin: new Date().toISOString(),
   },
