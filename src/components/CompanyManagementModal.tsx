@@ -16,6 +16,7 @@ import {
   Loader2,
   AlertCircle,
   Check,
+  Database,
 } from 'lucide-react';
 import { Company, UserRole, canManageCompanies } from '../types';
 import { lookupReceitaWsCnpj, ReceitaWSResponse } from '../services/receitaWsService';
@@ -62,6 +63,9 @@ export const CompanyManagementModal: React.FC<CompanyManagementModalProps> = ({
   const [receitaSuccessMessage, setReceitaSuccessMessage] = useState<string | null>(null);
   const [receitaData, setReceitaData] = useState<ReceitaWSResponse | null>(null);
 
+  // Evita repetir a consulta automática para o mesmo CNPJ (limite da API pública: 3 consultas/min)
+  const lastAutoLookupRef = useRef<string>('');
+
   if (!isOpen) return null;
 
   const isAdmin = canManageCompanies(currentRole);
@@ -101,9 +105,6 @@ export const CompanyManagementModal: React.FC<CompanyManagementModalProps> = ({
     setReceitaData(null);
     setIsEditing(true);
   };
-
-  // Evita repetir a consulta automática para o mesmo CNPJ (limite da API pública: 3 consultas/min)
-  const lastAutoLookupRef = useRef<string>('');
 
   const handleCnpjChange = (val: string) => {
     const formatted = formatCNPJ(val);
@@ -547,7 +548,7 @@ export const CompanyManagementModal: React.FC<CompanyManagementModalProps> = ({
 
                   return (
                     <div
-                      key={comp.id}
+                      key={`${comp.id}-${comp.cnpj || 'no-cnpj'}`}
                       className={`p-4 rounded-xl border transition-all ${
                         isActive
                           ? 'bg-purple-950/20 border-purple-500/60 shadow-lg shadow-purple-950/30 ring-1 ring-purple-500/30'
@@ -603,6 +604,30 @@ export const CompanyManagementModal: React.FC<CompanyManagementModalProps> = ({
                             <Mail className="w-3 h-3 text-slate-500" />
                             {comp.email}
                           </span>
+                        </div>
+
+                        {/* Banco de Dados Vinculado ao Tenant */}
+                        <div className="pt-2 mt-2 border-t border-slate-700/40 flex items-center justify-between text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            <Database className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span className="text-slate-400">Banco:</span>
+                            {comp.databaseConfig ? (
+                              <span className="text-emerald-300 font-medium truncate max-w-[200px]" title={`${comp.databaseConfig.engine.toUpperCase()} em ${comp.databaseConfig.host}:${comp.databaseConfig.port}/${comp.databaseConfig.database}`}>
+                                {comp.databaseConfig.engine.toUpperCase()} ({comp.databaseConfig.host.split('.')[0]})
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 italic">Padrão / Em Memória</span>
+                            )}
+                          </div>
+                          {comp.databaseConfig ? (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              Vinculado
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-700/50 text-slate-400 border border-slate-600/40">
+                              Não Parametrizado
+                            </span>
+                          )}
                         </div>
                       </div>
 

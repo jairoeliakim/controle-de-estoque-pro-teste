@@ -1,17 +1,36 @@
 {
   "engine": "postgres",
-  "host": "127.0.0.1",
+  "host": "aws-1-sa-east-1.pooler.supabase.com",
   "port": 5432,
-  "database": "t_route",
-  "username": "postgres",
-  "password": "testpw",
-  "ssl": false,
+  "database": "postgres",
+  "username": "postgres.oyjiiffepckiekuwvkub",
+  "password": "?AWhh!8n&C_E$2i",
+  "ssl": true,
   "status": "conectado",
   "isSimulationMode": false,
   "databaseExists": true,
+  "lastConnectedAt": "2026-10-16T01:24:07.853Z",
   "tablesCreated": true,
-  "totalRecordsCount": 13,
-  "lastConnectedAt": "2026-10-16T00:08:47.025Z",
   "tablesCount": 15,
-  "lastMigrationAt": "2026-10-16T00:08:47.434Z"
+  "lastMigrationAt": "2026-10-16T01:24:42.462Z",
+  "totalRecordsCount": 14,
+  "tenantConfigs": {
+    "00000000000001": {
+      "engine": "postgres",
+      "host": "aws-1-sa-east-1.pooler.supabase.com",
+      "port": 5432,
+      "database": "postgres",
+      "username": "postgres.oyjiiffepckiekuwvkub",
+      "password": "?AWhh!8n&C_E$2i",
+      "ssl": true,
+      "status": "conectado",
+      "isSimulationMode": false,
+      "databaseExists": true,
+      "tablesCreated": true,
+      "tablesCount": 15,
+      "lastMigrationAt": "2026-10-16T01:24:42.462Z",
+      "totalRecordsCount": 14,
+      "tenantId": "00000000000001"
+    }
+  }
 }

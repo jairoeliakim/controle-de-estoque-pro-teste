@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Shield,
   Zap,
+  Building2,
 } from 'lucide-react';
 import { DatabaseEngine, DatabaseConnectionConfig } from '../../types';
 import { SYSTEM_TABLES, generateDatabaseScript } from '../../utils/databaseScripts';
@@ -27,11 +28,17 @@ import { SYSTEM_TABLES, generateDatabaseScript } from '../../utils/databaseScrip
 interface DatabaseLinkSectionProps {
   initialConfig?: DatabaseConnectionConfig;
   onUpdateConfig: (config: DatabaseConnectionConfig) => void;
+  tenantId?: string;
+  companyName?: string;
+  companyCnpj?: string;
 }
 
 export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
   initialConfig,
   onUpdateConfig,
+  tenantId,
+  companyName,
+  companyCnpj,
 }) => {
   // Config states
   const [engine, setEngine] = useState<DatabaseEngine>(initialConfig?.engine || 'postgres');
@@ -93,7 +100,8 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
   // Consulta status e logs de alimentação da rota do banco em tempo real
   const fetchDatabaseStatus = async () => {
     try {
-      const res = await fetch('/api/database/status');
+      const url = tenantId ? `/api/database/status?tenantId=${encodeURIComponent(tenantId)}` : '/api/database/status';
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.databaseConfig) {
@@ -104,6 +112,15 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
           setTablesCreated(Boolean(data.databaseConfig.tablesCreated));
           if (data.databaseConfig.tablesCreated && completedTables.length === 0) {
             setCompletedTables(SYSTEM_TABLES.map((t) => t.name));
+          }
+          // Se não há dados preenchidos localmente, hidrata com a configuração salva do banco
+          if (!host && data.databaseConfig.host) {
+            setHost(data.databaseConfig.host);
+            setPort(data.databaseConfig.port);
+            setDatabase(data.databaseConfig.database);
+            setUsername(data.databaseConfig.username);
+            setEngine(data.databaseConfig.engine);
+            setSsl(Boolean(data.databaseConfig.ssl));
           }
         }
         if (data.tableRecords) {
@@ -120,7 +137,7 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
     fetchDatabaseStatus();
     const timer = setInterval(fetchDatabaseStatus, 3500);
     return () => clearInterval(timer);
-  }, []);
+  }, [tenantId]);
 
   // Sync when initialConfig changes
   useEffect(() => {
@@ -239,6 +256,7 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
           password,
           ssl,
           simulationMode: useSim,
+          tenantId: tenantId || initialConfig?.tenantId || '00000000000001',
         }),
       });
 
@@ -283,6 +301,7 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
         tablesCount: completedTables.length,
         lastMigrationAt,
         serverVersion: data.serverVersion,
+        tenantId: tenantId || initialConfig?.tenantId || '00000000000001',
       };
       onUpdateConfig(updatedConfig);
 
@@ -387,6 +406,33 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in">
+      {/* Banner de Tenant / Empresa Vinculada */}
+      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg shadow-amber-950/20">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+            <Building2 className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-400">Tenant / Empresa Ativa:</span>
+              <strong className="text-sm font-bold text-amber-200">
+                {companyName || 'Empresa Matriz (CEC Conecta)'}
+              </strong>
+            </div>
+            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+              Identificador do Tenant (CNPJ): <span className="text-slate-200 font-bold">{companyCnpj || tenantId || '00000000000001'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-400/20 text-amber-300 border border-amber-400/40 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+            <span>Salvo no Tenant da Empresa</span>
+          </span>
+        </div>
+      </div>
+
       {/* Intro Header */}
       <div className="p-4 rounded-2xl bg-slate-950/80 border border-cyan-900/40 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

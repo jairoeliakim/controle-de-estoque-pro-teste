@@ -29,6 +29,7 @@ import {
   UserRole,
   canAccessSystemSettings,
   DatabaseConnectionConfig,
+  Company,
 } from '../types';
 import { INITIAL_SYSTEM_SETTINGS } from '../data/initialData';
 import { DatabaseLinkSection } from './database/DatabaseLinkSection';
@@ -41,6 +42,8 @@ interface SystemSettingsModalProps {
   currentRole: UserRole;
   currentUserName?: string;
   initialTab?: 'precos' | 'contagem' | 'seguranca' | 'financeiro' | 'database';
+  activeCompany?: Company;
+  onSaveCompany?: (company: Company) => void;
 }
 
 export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
@@ -51,6 +54,8 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
   currentRole,
   currentUserName = 'Administrador Geral',
   initialTab = 'precos',
+  activeCompany,
+  onSaveCompany,
 }) => {
   const [activeTab, setActiveTab] = useState<'precos' | 'contagem' | 'seguranca' | 'financeiro' | 'database'>(initialTab);
 
@@ -255,6 +260,12 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
     };
 
     onSaveSettings(updated);
+    if (activeCompany && onSaveCompany && databaseConfig) {
+      onSaveCompany({
+        ...activeCompany,
+        databaseConfig,
+      });
+    }
     setSaveSuccess(true);
     setTimeout(() => {
       setSaveSuccess(false);
@@ -939,8 +950,19 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
               {/* TAB 5: VINCULAR BANCO DE DADOS (MYSQL, POSTGRES, SQL SERVER) & CRIAR TABELAS */}
               {activeTab === 'database' && (
                 <DatabaseLinkSection
-                  initialConfig={databaseConfig}
-                  onUpdateConfig={(cfg) => setDatabaseConfig(cfg)}
+                  initialConfig={activeCompany?.databaseConfig || databaseConfig}
+                  onUpdateConfig={(cfg) => {
+                    setDatabaseConfig(cfg);
+                    if (activeCompany && onSaveCompany) {
+                      onSaveCompany({
+                        ...activeCompany,
+                        databaseConfig: cfg,
+                      });
+                    }
+                  }}
+                  tenantId={activeCompany?.id}
+                  companyName={activeCompany?.tradeName || activeCompany?.name}
+                  companyCnpj={activeCompany?.cnpj}
                 />
               )}
 

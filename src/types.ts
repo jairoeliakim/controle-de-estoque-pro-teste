@@ -126,6 +126,7 @@ export interface Company {
   createdAt: string;
   address?: string;
   managerName?: string;
+  databaseConfig?: DatabaseConnectionConfig;
 }
 
 // Funcionários da Empresa (GERENTE, COMPRAS, CONFERENTE)
@@ -470,6 +471,7 @@ export interface DatabaseConnectionConfig {
   tablesCount?: number;
   lastMigrationAt?: string;
   serverVersion?: string;
+  tenantId?: string;
 }
 
 // Usuário com Acesso Individual Autenticado

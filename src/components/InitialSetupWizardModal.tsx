@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Company, DatabaseEngine, DatabaseConnectionConfig, UserRole } from '../types';
 import { formatCNPJ, validateCNPJ, autoFixCNPJCheckDigits, cleanCNPJ } from '../utils/cnpjValidator';
+import { isInstallCnpj } from '../utils/adminCredentials';
 import { syncAllDataToDatabase } from '../utils/databaseSync';
 import { lookupReceitaWsCnpj, ReceitaWSResponse } from '../services/receitaWsService';
 
@@ -86,6 +87,9 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
   const [syncMessage, setSyncMessage] = useState<string>('');
   const [syncedRecordsCount, setSyncedRecordsCount] = useState<number>(0);
 
+  // Evita repetir a consulta automática para o mesmo CNPJ (limite da API pública: 3 consultas/min)
+  const lastAutoLookupRef = useRef<string>('');
+
   // Ajusta porta padrão quando o motor muda
   useEffect(() => {
     if (engine === 'postgres') setPort(5432);
@@ -120,9 +124,6 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       setCnpj(fixed);
     }
   };
-
-  // Evita repetir a consulta automática para o mesmo CNPJ (limite da API pública: 3 consultas/min)
-  const lastAutoLookupRef = useRef<string>('');
 
   const handleCnpjChange = (val: string) => {
     const formatted = formatCNPJ(val);
@@ -183,7 +184,8 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
     e.preventDefault();
     if (!name.trim() || !cnpj.trim()) return;
 
-    const cleanCnpjId = cleanCNPJ(cnpj) || '00000000000001';
+    const rawClean = cleanCNPJ(cnpj);
+    const cleanCnpjId = (rawClean && !isInstallCnpj(rawClean)) ? rawClean : '00000000000001';
     const newCompany: Company = {
       id: cleanCnpjId, // Tenant identificador da empresa é o CNPJ sem traços
       name: name.trim(),
@@ -231,6 +233,9 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       const useSsl = ssl || /supabase\.(co|com)$/i.test(host.trim());
       if (useSsl && !ssl) setSsl(true);
 
+      const targetCompany = companySaved || existingCompanies[0];
+      const targetTenantId = targetCompany?.id || '00000000000001';
+
       const payload = {
         engine,
         host: host.trim(),
@@ -239,6 +244,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
         username: username.trim(),
         password,
         ssl: useSsl,
+        tenantId: targetTenantId,
       };
 
       // 1. Testa a conexão real com o SGBD
@@ -259,7 +265,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
         return;
       }
 
-      // 2. Vincula o banco ao sistema (usado pelas demais rotas)
+      // 2. Vincula o banco ao sistema e ao tenant da empresa
       const linkRes = await fetch('/api/database/link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -277,9 +283,31 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
         return;
       }
 
+      // 3. Salva a parametrização do banco no tenant da empresa
+      if (targetCompany) {
+        const updatedTargetCompany: Company = {
+          ...targetCompany,
+          databaseConfig: {
+            engine,
+            host: host.trim(),
+            port,
+            database: database.trim(),
+            username: username.trim(),
+            password,
+            ssl: useSsl,
+            status: 'conectado',
+            isSimulationMode: false,
+            tablesCreated: true,
+            tenantId: targetTenantId,
+          },
+        };
+        onSaveCompany(updatedTargetCompany);
+        setCompanySaved(updatedTargetCompany);
+      }
+
       setConnectionStatus('success');
       setConnectionMessage(
-        `Conexão com ${engine.toUpperCase()} estabelecida e vinculada com sucesso! (${data.latencyMs ? `${data.latencyMs}ms` : 'Online'})`
+        `Conexão com ${engine.toUpperCase()} estabelecida e vinculada ao tenant "${targetTenantId}" com sucesso! (${data.latencyMs ? `${data.latencyMs}ms` : 'Online'})`
       );
     } catch (err: any) {
       setConnectionStatus('error');

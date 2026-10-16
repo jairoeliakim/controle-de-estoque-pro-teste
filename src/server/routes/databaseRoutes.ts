@@ -392,16 +392,23 @@ let linkedDatabaseState: {
   totalRecordsCount: 0,
 };
 
+// Estado em memória das configurações de banco de cada Tenant/Empresa
+let tenantDatabaseConfigs: Record<string, typeof linkedDatabaseState> = {};
+
 // Estado do vínculo SEM a senha (usado nas respostas da API)
 function publicDbState() {
   const { password: _password, ...rest } = linkedDatabaseState;
   return rest;
 }
 
-// Persistência em disco do arquivo de configuração
+// Persistência em disco do arquivo de configuração (com suporte a multi-tenant)
 function savePersistedConfig(state: typeof linkedDatabaseState) {
   try {
-    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(state, null, 2), 'utf-8');
+    const toSave = {
+      ...state,
+      tenantConfigs: tenantDatabaseConfigs,
+    };
+    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(toSave, null, 2), 'utf-8');
   } catch (err: any) {
     console.warn('[DB Config Save Warning]:', err.message);
   }
@@ -413,11 +420,22 @@ function tryRestorePersistedConfig() {
       const content = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
       const loaded = JSON.parse(content);
       if (loaded && loaded.database && loaded.host) {
+        const isLocal = loaded.host === 'localhost' || loaded.host === '127.0.0.1';
         linkedDatabaseState = {
           ...linkedDatabaseState,
           ...loaded,
+          // Evita assumir conectado em localhost em contêiner se não for modo simulado
+          status: isLocal && !loaded.isSimulationMode ? 'desconectado' : loaded.status,
         };
-        console.info(`[DB Config Loaded] Banco pré-configurado: ${linkedDatabaseState.engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database} (status: ${linkedDatabaseState.status})`);
+
+        if (loaded.tenantConfigs && typeof loaded.tenantConfigs === 'object') {
+          tenantDatabaseConfigs = loaded.tenantConfigs;
+        } else {
+          // Atribui ao tenant padrão '00000000000001' a configuração carregada
+          tenantDatabaseConfigs['00000000000001'] = { ...linkedDatabaseState };
+        }
+
+        console.info(`[DB Config Loaded] Banco pré-configurado: ${linkedDatabaseState.engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database} (status: ${linkedDatabaseState.status}) - ${Object.keys(tenantDatabaseConfigs).length} tenant(s) parametrizado(s)`);
       }
     }
   } catch (err: any) {
@@ -728,7 +746,12 @@ async function checkRowExistsInDb(engine: DatabaseEngine, tableName: string, id:
       await conn.end();
       return Array.isArray(rows) && rows.length > 0;
     }
-  } catch {
+  } catch (err: any) {
+    if (err?.code === 'ECONNREFUSED' || err?.code === 'ENOTFOUND' || err?.code === 'ETIMEDOUT') {
+      linkedDatabaseState.status = 'erro';
+      linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+      savePersistedConfig(linkedDatabaseState);
+    }
     return false;
   }
   return false;
@@ -904,6 +927,11 @@ async function executeRawUpsertDirect(
       await client.query(sql, values);
       await client.end();
     } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+        linkedDatabaseState.status = 'erro';
+        linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+        savePersistedConfig(linkedDatabaseState);
+      }
       console.warn(`[Raw Upsert Postgres Error on ${tableName}]:`, err.message);
     }
   } else if (engine === 'mysql') {
@@ -925,6 +953,11 @@ async function executeRawUpsertDirect(
       await conn.execute(sql, values);
       await conn.end();
     } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+        linkedDatabaseState.status = 'erro';
+        linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+        savePersistedConfig(linkedDatabaseState);
+      }
       console.warn(`[Raw Upsert MySQL Error on ${tableName}]:`, err.message);
     }
   }
@@ -991,7 +1024,12 @@ async function executeRealSqlUpsert(
         await client.end();
         return { success: true, sqlExecuted: debugSql };
       } catch (err: any) {
-        console.error(`[Postgres INSERT Error on ${tableName}]:`, err.message);
+        console.warn(`[Postgres INSERT fallback on ${tableName}]: ${err.message}`);
+        if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+          linkedDatabaseState.status = 'erro';
+          linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+          savePersistedConfig(linkedDatabaseState);
+        }
         return { success: false, sqlExecuted: debugSql, error: err.message };
       }
     }
@@ -1035,7 +1073,12 @@ async function executeRealSqlUpsert(
         await conn.end();
         return { success: true, sqlExecuted: debugSql };
       } catch (err: any) {
-        console.error(`[MySQL INSERT Error on ${tableName}]:`, err.message);
+        console.warn(`[MySQL INSERT fallback on ${tableName}]: ${err.message}`);
+        if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+          linkedDatabaseState.status = 'erro';
+          linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+          savePersistedConfig(linkedDatabaseState);
+        }
         return { success: false, sqlExecuted: debugSql, error: err.message };
       }
     }
@@ -1085,7 +1128,12 @@ async function executeRealSqlDelete(
       }
       return { success: true, sqlExecuted: sql };
     } catch (err: any) {
-      console.error(`[SQL DELETE Error on ${tableName}]:`, err.message);
+      console.warn(`[SQL DELETE fallback on ${tableName}]: ${err.message}`);
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+        linkedDatabaseState.status = 'erro';
+        linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+        savePersistedConfig(linkedDatabaseState);
+      }
       return { success: false, sqlExecuted: sql, error: err.message };
     }
   }
@@ -1357,7 +1405,8 @@ databaseRouter.post('/database/test-connection', async (req: Request, res: Respo
  * POST /api/database/link
  */
 databaseRouter.post('/database/link', async (req: Request, res: Response) => {
-  const { engine, host, port, database, username, password, ssl, simulationMode } = req.body || {};
+  const { engine, host, port, database, username, password, ssl, simulationMode, tenantId, companyId } = req.body || {};
+  const effectiveTenantId = String(tenantId || companyId || '00000000000001').trim();
 
   if (!engine || !host || !port || !database || !username) {
     return res.status(400).json({
@@ -1448,22 +1497,119 @@ databaseRouter.post('/database/link', async (req: Request, res: Response) => {
     totalRecordsCount: calculateTotalRecords(),
   };
 
-  // Salva no arquivo de configuração em disco
+  // Salva no mapa de configurações do tenant específico da empresa
+  tenantDatabaseConfigs[effectiveTenantId] = {
+    ...linkedDatabaseState,
+  };
+
+  // Atualiza também os dados da empresa em tenants_companies se presente
+  if (databaseTables.tenants_companies.has(effectiveTenantId)) {
+    const existingComp = databaseTables.tenants_companies.get(effectiveTenantId);
+    databaseTables.tenants_companies.set(effectiveTenantId, {
+      ...existingComp,
+      databaseConfig: publicDbState(),
+    });
+  }
+
+  // Salva no arquivo de configuração em disco com tenantConfigs
   savePersistedConfig(linkedDatabaseState);
 
   logSql(
     'system_settings',
     'UPDATE',
-    `-- Conexão vinculada ao cluster ${engine.toUpperCase()} em ${host}:${port}/${database}${simulationMode ? ' [MODO SIMULADO]' : ' [AUTENTICADO COM SUCESSO]'}`,
+    `-- Conexão vinculada ao cluster ${engine.toUpperCase()} em ${host}:${port}/${database} (Tenant ${effectiveTenantId})${simulationMode ? ' [MODO SIMULADO]' : ' [AUTENTICADO COM SUCESSO]'}`,
     1
   );
 
   return res.json({
     success: true,
-    databaseConfig: publicDbState(),
+    tenantId: effectiveTenantId,
+    databaseConfig: {
+      ...publicDbState(),
+      tenantId: effectiveTenantId,
+    },
     message: simulationMode
-      ? `Banco de dados "${database}" vinculado em MODO SIMULADO (em memória).`
-      : `Banco de dados "${database}" (${engine.toUpperCase()}) em ${host}:${port} validado e vinculado com sucesso!`,
+      ? `Banco de dados "${database}" vinculado em MODO SIMULADO para o tenant ${effectiveTenantId}.`
+      : `Banco de dados "${database}" (${engine.toUpperCase()}) em ${host}:${port} validado e vinculado ao tenant ${effectiveTenantId} com sucesso!`,
+  });
+});
+
+/**
+  * 2.1. Ativar conexão do banco de um Tenant específico
+  * POST /api/database/activate-tenant/:tenantId
+  */
+databaseRouter.post('/database/activate-tenant/:tenantId', async (req: Request, res: Response) => {
+  const tenantId = String(req.params.tenantId).trim();
+  const cfg = tenantDatabaseConfigs[tenantId];
+  if (cfg && cfg.host && cfg.database) {
+    linkedDatabaseState = {
+      ...linkedDatabaseState,
+      ...cfg,
+    };
+    savePersistedConfig(linkedDatabaseState);
+    return res.json({
+      success: true,
+      activated: true,
+      tenantId,
+      databaseConfig: {
+        ...publicDbState(),
+        tenantId,
+      },
+      message: `Banco do tenant "${tenantId}" ativado com sucesso! (${cfg.engine.toUpperCase()} em ${cfg.host})`,
+    });
+  }
+
+  return res.json({
+    success: false,
+    activated: false,
+    tenantId,
+    message: `Nenhum banco configurado previamente para o tenant "${tenantId}".`,
+  });
+});
+
+/**
+  * 2.2. Salvar parâmetros de banco diretamente para um Tenant
+  * POST /api/database/save-tenant-config
+  */
+databaseRouter.post('/database/save-tenant-config', async (req: Request, res: Response) => {
+  const { tenantId, companyId, databaseConfig } = req.body || {};
+  const tId = String(tenantId || companyId || '').trim();
+  if (!tId || !databaseConfig) {
+    return res.status(400).json({
+      success: false,
+      message: 'tenantId e databaseConfig são obrigatórios.',
+    });
+  }
+
+  tenantDatabaseConfigs[tId] = {
+    ...linkedDatabaseState,
+    ...databaseConfig,
+  };
+
+  // Se o tenant atual for o mesmo do request, atualiza linkedDatabaseState
+  linkedDatabaseState = {
+    ...linkedDatabaseState,
+    ...databaseConfig,
+  };
+
+  if (databaseTables.tenants_companies.has(tId)) {
+    const existingComp = databaseTables.tenants_companies.get(tId);
+    databaseTables.tenants_companies.set(tId, {
+      ...existingComp,
+      databaseConfig: publicDbState(),
+    });
+  }
+
+  savePersistedConfig(linkedDatabaseState);
+
+  return res.json({
+    success: true,
+    tenantId: tId,
+    databaseConfig: {
+      ...publicDbState(),
+      tenantId: tId,
+    },
+    message: `Configuração do banco de dados salva com sucesso no tenant "${tId}".`,
   });
 });
 
@@ -1915,9 +2061,29 @@ databaseRouter.get('/database/all-data', async (_req: Request, res: Response) =>
     result[key] = Array.from(map.values());
   }
 
+  // Anexa a configuração de banco correspondente em cada empresa tenant
+  if (result.tenants_companies && Array.isArray(result.tenants_companies)) {
+    result.tenants_companies = result.tenants_companies.map((c: any) => {
+      const tenantCfg = tenantDatabaseConfigs[c.id];
+      if (tenantCfg) {
+        const { password: _p, ...cleanCfg } = tenantCfg;
+        return { ...c, databaseConfig: cleanCfg };
+      }
+      return c;
+    });
+  }
+
+  // Sanitiza mapa de tenants para o retorno
+  const sanitizedTenants: Record<string, any> = {};
+  for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
+    const { password: _p, ...cleanCfg } = tCfg;
+    sanitizedTenants[tId] = cleanCfg;
+  }
+
   return res.json({
     success: true,
-    databaseConfig: linkedDatabaseState,
+    databaseConfig: publicDbState(),
+    tenantConfigs: sanitizedTenants,
     tables: result,
     stats: {
       companies: databaseTables.tenants_companies.size,
@@ -1934,15 +2100,32 @@ databaseRouter.get('/database/all-data', async (_req: Request, res: Response) =>
 });
 
 /**
- * 8. Obter status atual do banco vinculado
+ * 8. Obter status atual do banco vinculado (suporta filtro por tenantId)
  * GET /api/database/status
  */
-databaseRouter.get('/database/status', (_req: Request, res: Response) => {
+databaseRouter.get('/database/status', (req: Request, res: Response) => {
+  const reqTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : null;
+  let targetConfig = linkedDatabaseState;
+  if (reqTenantId && tenantDatabaseConfigs[reqTenantId]) {
+    targetConfig = tenantDatabaseConfigs[reqTenantId];
+  }
+
+  const { password: _p, ...sanitizedTarget } = targetConfig;
+
+  // Sanitiza mapa de tenants
+  const sanitizedTenants: Record<string, any> = {};
+  for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
+    const { password: _pw, ...cleanCfg } = tCfg;
+    sanitizedTenants[tId] = cleanCfg;
+  }
+
   return res.json({
     databaseConfig: {
-      ...publicDbState(),
+      ...sanitizedTarget,
       totalRecordsCount: calculateTotalRecords(),
     },
+    tenantConfigs: sanitizedTenants,
+    activeTenantId: reqTenantId || '00000000000001',
     availableEngines: [
       { id: 'postgres', name: 'PostgreSQL', defaultPort: 5432, driver: 'pg' },
       { id: 'mysql', name: 'MySQL', defaultPort: 3306, driver: 'mysql2' },

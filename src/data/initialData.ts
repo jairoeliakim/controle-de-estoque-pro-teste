@@ -31,6 +31,20 @@ export const INITIAL_COMPANIES: Company[] = [
     createdAt: '2026-01-01T08:00:00.000Z',
     address: 'Av. Afonso Pena, 1500 - Centro',
     managerName: 'Administrador Geral',
+    databaseConfig: {
+      engine: 'postgres',
+      host: 'aws-1-sa-east-1.pooler.supabase.com',
+      port: 5432,
+      database: 'postgres',
+      username: 'postgres.oyjiiffepckiekuwvkub',
+      password: '?AWhh!8n&C_E$2i',
+      ssl: true,
+      status: 'conectado',
+      isSimulationMode: false,
+      tablesCreated: true,
+      tablesCount: 15,
+      tenantId: '00000000000001',
+    },
   },
 ];
 
