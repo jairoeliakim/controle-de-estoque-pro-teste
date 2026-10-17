@@ -113,8 +113,8 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
           if (data.databaseConfig.tablesCreated && completedTables.length === 0) {
             setCompletedTables(SYSTEM_TABLES.map((t) => t.name));
           }
-          // Se não há dados preenchidos localmente, hidrata com a configuração salva do banco
-          if (!host && data.databaseConfig.host) {
+          // Se há configuração salva no tenant do banco, hidrata os campos
+          if (data.databaseConfig.host && (!host || data.databaseConfig.status === 'conectado')) {
             setHost(data.databaseConfig.host);
             setPort(data.databaseConfig.port);
             setDatabase(data.databaseConfig.database);
@@ -159,7 +159,7 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
         setCompletedTables(SYSTEM_TABLES.map((t) => t.name));
       }
     }
-  }, [initialConfig]);
+  }, [initialConfig, tenantId]);
 
   // Ao alterar o motor do banco, ajustar a porta padrão
   const handleSelectEngine = (newEngine: DatabaseEngine) => {

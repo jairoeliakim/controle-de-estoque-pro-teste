@@ -16,7 +16,13 @@ import {
   Search,
   Building2,
   Sparkles,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
 } from 'lucide-react';
+import { generateRandomPassword } from '../utils/passwordSecurity';
 import {
   Company,
   Employee,
@@ -57,16 +63,21 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
     name: string;
     role: EmployeeRole;
     email: string;
+    password?: string;
     isEdit: boolean;
   } | null>(null);
   const [justSavedId, setJustSavedId] = useState<string | null>(null);
 
   // Form state
   const [name, setName] = useState('');
+  const [matricula, setMatricula] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<EmployeeRole>('conferente');
   const [notes, setNotes] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
 
   if (!isOpen) return null;
 
@@ -99,6 +110,7 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
       return (
         emp.name.toLowerCase().includes(term) ||
         emp.email.toLowerCase().includes(term) ||
+        (emp.matricula && emp.matricula.toLowerCase().includes(term)) ||
         emp.phone.includes(term)
       );
     }
@@ -117,10 +129,15 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
     setSuccessInfo(null);
     setEditingEmployee(null);
     setName('');
+    setMatricula('');
     setEmail('');
     setPhone('(11) 9');
     setRole(selectedRoleTab !== 'todos' ? selectedRoleTab : 'conferente');
     setNotes('');
+    const suggested = generateRandomPassword(10);
+    setPassword(suggested);
+    setShowPassword(true);
+    setCopiedPassword(false);
     setIsEditing(true);
   };
 
@@ -129,11 +146,29 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
     setSuccessInfo(null);
     setEditingEmployee(emp);
     setName(emp.name);
+    setMatricula(emp.matricula || '');
     setEmail(emp.email);
     setPhone(emp.phone);
     setRole(emp.role);
     setNotes(emp.notes || '');
+    setPassword(emp.password || '');
+    setShowPassword(false);
+    setCopiedPassword(false);
     setIsEditing(true);
+  };
+
+  const handleSuggestRandomPassword = () => {
+    const suggested = generateRandomPassword(10);
+    setPassword(suggested);
+    setShowPassword(true);
+    setCopiedPassword(false);
+  };
+
+  const handleCopyCreatedPassword = (pwdToCopy: string) => {
+    if (!pwdToCopy) return;
+    navigator.clipboard.writeText(pwdToCopy);
+    setCopiedPassword(true);
+    setTimeout(() => setCopiedPassword(false), 2000);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -156,6 +191,8 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
       createdAt: editingEmployee ? editingEmployee.createdAt : new Date().toISOString(),
       notes: notes.trim() || undefined,
       lastLogin: editingEmployee?.lastLogin,
+      password: password.trim() || undefined,
+      matricula: matricula.trim() || undefined,
     };
 
     onSaveEmployee(newEmployee);
@@ -166,6 +203,7 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
       name: newEmployee.name,
       role: newEmployee.role,
       email: newEmployee.email,
+      password: newEmployee.password,
       isEdit,
     });
     setIsEditing(false);
@@ -314,6 +352,19 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
 
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">
+                    Matrícula do Colaborador
+                  </label>
+                  <input
+                    type="text"
+                    value={matricula}
+                    onChange={(e) => setMatricula(e.target.value)}
+                    placeholder="Ex: MAT-2026-089"
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">
                     Tipo de Perfil / Cargo *
                   </label>
                   <select
@@ -365,6 +416,60 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
                     placeholder="Ex: Turno da manhã / Responsável pela câmara fria"
                     className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
                   />
+                </div>
+
+                {/* 5. Senha de Acesso / Criação com Sugestão Aleatória */}
+                <div className="md:col-span-2 p-3.5 rounded-xl bg-slate-850 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                      <KeyRound className="w-4 h-4 text-amber-400" />
+                      <span>Senha de Acesso do Colaborador *</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleSuggestRandomPassword}
+                      className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1 cursor-pointer transition-colors px-2 py-0.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Sugerir Senha Aleatória</span>
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Crie a senha do colaborador ou clique em 'Sugerir Senha Aleatória'"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono pr-20"
+                      required
+                    />
+                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      {password && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyCreatedPassword(password)}
+                          className="p-1.5 rounded text-slate-400 hover:text-slate-200 transition-colors"
+                          title="Copiar senha"
+                        >
+                          {copiedPassword ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="p-1.5 rounded text-slate-400 hover:text-slate-200 transition-colors"
+                        title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Você pode digitar uma senha personalizada ou sugerir uma senha aleatória segura. 
+                    <strong className="text-slate-300 ml-1">Na tela inicial, o próprio colaborador poderá alterar sua senha caso queira.</strong>
+                  </p>
                 </div>
               </div>
 
@@ -435,7 +540,20 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
                         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-300 mt-2 bg-slate-950/60 p-2 rounded-lg border border-slate-800">
                           <span className="flex items-center gap-1 font-mono">
                             <Lock className="w-3 h-3 text-emerald-400" />
-                            PIN de Acesso: <strong className="text-emerald-300 bg-emerald-950 px-1 rounded">******</strong>
+                            Senha Configurada:{' '}
+                            <strong className="text-emerald-300 bg-emerald-950 px-1.5 py-0.5 rounded font-mono">
+                              {successInfo.password || '******'}
+                            </strong>
+                            {successInfo.password && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyCreatedPassword(successInfo.password || '')}
+                                className="p-1 rounded text-slate-400 hover:text-emerald-300 ml-0.5 cursor-pointer"
+                                title="Copiar senha configurada"
+                              >
+                                {copiedPassword ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                            )}
                           </span>
                           <span className="text-slate-600">•</span>
                           <span className="flex items-center gap-1">
@@ -581,14 +699,26 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
                                 {roleInfo.icon}
                                 {roleInfo.label}
                               </span>
+                              {emp.matricula && (
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold">
+                                  Matrícula: {emp.matricula}
+                                </span>
+                              )}
                               <span
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
                                   isBlocked
                                     ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
                                     : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                                 }`}
                               >
-                                {isBlocked ? 'Acesso Bloqueado' : 'Ativo'}
+                                {isBlocked ? (
+                                  <>
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                                    <span>Aguardando Aprovação de Gerente</span>
+                                  </>
+                                ) : (
+                                  'Ativo'
+                                )}
                               </span>
                             </div>
 
@@ -618,12 +748,12 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
 
-                            {/* Bloquear / Desbloquear */}
+                            {/* Bloquear / Desbloquear / Aprovar */}
                             <button
                               onClick={() => handleBlockToggle(emp)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all active:scale-95 ${
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all active:scale-95 cursor-pointer ${
                                 isBlocked
-                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-sm font-bold'
                                   : 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
                               } ${
                                 isTargetGerente && !canAlterThisGerente
@@ -634,12 +764,12 @@ export const EmployeesManagementModal: React.FC<EmployeesManagementModalProps> =
                                 isTargetGerente && !canAlterThisGerente
                                   ? 'Apenas Administrador e Gerente podem bloquear um Gerente'
                                   : isBlocked
-                                  ? 'Desbloquear acesso'
+                                  ? 'Aprovar e liberar acesso do funcionário'
                                   : 'Bloquear acesso do funcionário'
                               }
                             >
                               <UserX className="w-3 h-3" />
-                              <span>{isBlocked ? 'Desbloquear' : 'Bloquear'}</span>
+                              <span>{isBlocked ? 'Aprovar Acesso' : 'Bloquear'}</span>
                             </button>
 
                             {/* Excluir */}

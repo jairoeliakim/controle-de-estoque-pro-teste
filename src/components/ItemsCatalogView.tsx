@@ -69,15 +69,15 @@ export const ItemsCatalogView: React.FC<ItemsCatalogViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
                 <Layers className="w-3.5 h-3.5 text-purple-400" />
-                Catálogo & Parâmetros de Estoque
+                Gestão de Produtos
               </span>
-              <span className="text-xs text-slate-400">Nível Administrador / Gerente</span>
+              <span className="text-xs text-slate-400">Catálogo Geral</span>
             </div>
             <h2 className="text-xl font-extrabold text-slate-100 mt-2">
-              Itens Cadastrados, Limites Mínimos & Dias de Contagem
+              Produtos & Parâmetros de Estoque
             </h2>
             <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-              Gerencie a base de produtos do restaurante, configure os limites mínimos de disparo para compras, custos de aquisição e dias pré-definidos de contagem (ex: Quarta e Domingo).
+              Visualize todos os produtos cadastrados do restaurante, adicione novos itens, defina estoques mínimos e configure custos e locais de armazenamento.
             </p>
           </div>
 
@@ -94,11 +94,12 @@ export const ItemsCatalogView: React.FC<ItemsCatalogViewProps> = ({
 
             {canRegister ? (
               <button
+                id="btn-new-product"
                 onClick={onOpenNewItemModal}
                 className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950 hover:bg-emerald-400 transition-all shadow-md shadow-emerald-500/20 active:scale-95 whitespace-nowrap"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>Adicionar Novo Item</span>
+                <span>Novo Produto</span>
               </button>
             ) : (
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400">

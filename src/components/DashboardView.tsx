@@ -26,8 +26,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   items,
   losses,
 }) => {
-  const [activeMonthIndex, setActiveMonthIndex] = useState<number>(monthlyData.length - 1);
-  const activeMonth = monthlyData[activeMonthIndex] || monthlyData[monthlyData.length - 1];
+  const safeMonthlyData = monthlyData && monthlyData.length > 0 ? monthlyData : [
+    {
+      month: 'Mês Atual',
+      cmvPercentage: 28.5,
+      cmvTarget: 29.0,
+      totalPurchases: 0,
+      totalSales: 0,
+      totalLosses: 0,
+      countAccuracy: 100,
+      inventoryTurnover: 0,
+      categories: {},
+    }
+  ];
+
+  const [activeMonthIndex, setActiveMonthIndex] = useState<number>(safeMonthlyData.length - 1);
+  const activeMonth = safeMonthlyData[activeMonthIndex] || safeMonthlyData[0];
 
   // Total stock value in warehouse
   const totalStockValue = items.reduce((acc, i) => acc + i.currentStock * i.costPrice, 0);
@@ -57,8 +71,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return chartHeight - ((val - minCmv) / (maxCmv - minCmv)) * (chartHeight - 30) - 15;
   };
 
-  const cmvPoints = monthlyData.map((d, idx) => {
-    const x = 40 + idx * ((chartWidth - 80) / (monthlyData.length - 1));
+  const cmvPoints = safeMonthlyData.map((d, idx) => {
+    const x = safeMonthlyData.length > 1 ? 40 + idx * ((chartWidth - 80) / (safeMonthlyData.length - 1)) : chartWidth / 2;
     const y = getY(d.cmvPercentage);
     return { x, y, data: d };
   });
@@ -70,7 +84,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const targetY = getY(29.0);
 
   // Max purchases for bar chart
-  const maxPurchases = Math.max(...monthlyData.map((d) => d.totalPurchases), 40000);
+  const maxPurchases = Math.max(...safeMonthlyData.map((d) => d.totalPurchases), 40000);
 
   return (
     <div className="space-y-6">
@@ -101,7 +115,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               onChange={(e) => setActiveMonthIndex(Number(e.target.value))}
               className="bg-transparent text-xs font-bold text-slate-200 focus:outline-none cursor-pointer"
             >
-              {monthlyData.map((m, idx) => (
+              {safeMonthlyData.map((m, idx) => (
                 <option key={idx} value={idx} className="bg-slate-900 text-slate-200">
                   {m.month}
                 </option>
@@ -317,7 +331,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           {/* Bar comparison */}
           <div className="space-y-2.5">
-            {monthlyData.map((m, idx) => {
+            {safeMonthlyData.map((m, idx) => {
               const widthPct = Math.round((m.totalPurchases / maxPurchases) * 100);
               const isSelected = activeMonthIndex === idx;
 

@@ -597,7 +597,8 @@ export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant 
       };
 
     case 'system_users': {
-      const rawSecret = String(entity.password_hash || entity.pin || '@dm!n2026');
+      const validPin = entity.pin && entity.pin !== '[PROTEGIDO]' && entity.pin !== '[PROTEGIDO_CRIPTOGRAFADO]' ? entity.pin : '';
+      const rawSecret = String(entity.password_hash || entity.password || validPin || '@dm!n2026');
       const secureHash = rawSecret.startsWith('sha256$') || /^[a-f0-9]{64}$/i.test(rawSecret)
         ? rawSecret
         : hashPassword(rawSecret);
@@ -614,6 +615,8 @@ export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant 
         phone: entity.phone || null,
         pin: '[PROTEGIDO_CRIPTOGRAFADO]', // Inibe leitura via banco
         is_active: Boolean(entity.status !== 'bloqueado' && entity.is_active !== false && entity.is_active !== 0),
+        status: entity.status || (entity.is_active === false ? 'bloqueado' : 'ativo'),
+        matricula: entity.matricula ? String(entity.matricula).trim() : null,
         last_login: entity.lastLogin || entity.last_login || null,
         created_at: entity.createdAt || entity.created_at || now,
       };
@@ -1197,9 +1200,8 @@ function initCleanDatabaseSeed() {
     created_at: new Date('2026-01-01').toISOString(),
   };
 
-  // 1. Empresa Matriz Padrão (registrada com CNPJ sem traços e alias)
+  // 1. Empresa Matriz Padrão (registrada com CNPJ sem traços)
   databaseTables.tenants_companies.set(defaultTenantCnpj, defaultCompany);
-  databaseTables.tenants_companies.set('comp-matriz', defaultCompany);
 
   // 2. Categorias padrão no banco de dados para integridade de produtos
   const defaultCategories = [
@@ -1573,8 +1575,8 @@ databaseRouter.post('/database/link', async (req: Request, res: Response) => {
   * 2.1. Ativar conexão do banco de um Tenant específico
   * POST /api/database/activate-tenant/:tenantId
   */
-databaseRouter.post('/database/activate-tenant/:tenantId', async (req: Request, res: Response) => {
-  const tenantId = String(req.params.tenantId).trim();
+databaseRouter.post(['/database/activate-tenant', '/database/activate-tenant/:tenantId'], async (req: Request, res: Response) => {
+  const tenantId = String(req.params.tenantId || req.body?.tenantId || '').trim();
   const cfg = tenantDatabaseConfigs[tenantId];
   if (cfg && cfg.host && cfg.database) {
     linkedDatabaseState = {

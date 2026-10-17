@@ -29,6 +29,7 @@ import {
   UserRole,
   Company,
   Employee,
+  EmployeeRole,
   UnlistedCountItem,
   ItemCategory,
   canAccessBilling,
@@ -61,6 +62,7 @@ import { RecordUnlistedItemModal } from './components/RecordUnlistedItemModal';
 import { UnlistedItemsApprovalModal } from './components/UnlistedItemsApprovalModal';
 import { SystemSettingsModal } from './components/SystemSettingsModal';
 import { InitialSetupWizardModal } from './components/InitialSetupWizardModal';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { LoginView } from './components/LoginView';
 import { BillingGracePeriodBanner } from './components/billing/BillingGracePeriodBanner';
 import { BillingOverduePaywall } from './components/billing/BillingOverduePaywall';
@@ -188,6 +190,7 @@ export default function App() {
   const [isSystemSettingsOpen, setIsSystemSettingsOpen] = useState(false);
   const [isInitialSetupWizardOpen, setIsInitialSetupWizardOpen] = useState(false);
   const [systemSettingsTab, setSystemSettingsTab] = useState<'precos' | 'contagem' | 'seguranca' | 'financeiro' | 'database'>('precos');
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
 
   // Parametrização Sistêmica & Governança (Exclusivo Administrador)
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
@@ -198,7 +201,18 @@ export default function App() {
   // Base de Acessos Individuais Cadastrados
   const [registeredUsers, setRegisteredUsers] = useState<AuthUser[]>(() => {
     const saved = localStorage.getItem('ce_users');
-    return saved ? JSON.parse(saved) : INITIAL_DEMO_USERS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((u: any) => ({
+            ...u,
+            pin: u.pin === '[PROTEGIDO]' || u.pin === '[PROTEGIDO_CRIPTOGRAFADO]' ? (u.password_hash || INITIAL_DEMO_USERS[0].pin) : u.pin,
+          }));
+        }
+      } catch {}
+    }
+    return INITIAL_DEMO_USERS;
   });
 
   // Usuário Autenticado Ativo (Acesso Individual)
@@ -265,6 +279,13 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('ce_active_company_id', activeCompanyId);
+    if (activeCompanyId) {
+      fetch('/api/database/activate-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: activeCompanyId }),
+      }).catch(() => {});
+    }
   }, [activeCompanyId]);
 
   useEffect(() => {
@@ -351,6 +372,7 @@ export default function App() {
                 createdAt: u.created_at || u.createdAt || new Date().toISOString(),
                 notes: u.notes,
                 lastLogin: u.last_login || u.lastLogin,
+                matricula: u.matricula,
               };
             });
             setEmployees((prev) => {
@@ -373,6 +395,8 @@ export default function App() {
             phone: u.phone,
             pin: u.pin || u.password_hash || '*******',
             lastLogin: u.last_login || u.lastLogin,
+            status: u.is_active === 0 || u.is_active === false || u.status === 'bloqueado' ? 'bloqueado' : 'ativo',
+            matricula: u.matricula,
           }));
           setRegisteredUsers((prev) => {
             const merged = [...prev];
@@ -392,15 +416,17 @@ export default function App() {
         if (Array.isArray(dbData.tables.tenants_companies) && dbData.tables.tenants_companies.length > 0) {
           const mappedCompanies: Company[] = dbData.tables.tenants_companies.map((c: any) => {
             const cleanCnpj = cleanCNPJ(c.cnpj || '');
-            const tenantId = cleanCnpj || (c.id === 'comp-matriz' ? '00000000000001' : c.id);
+            const tenantId = (cleanCnpj && cleanCnpj !== '00000000000000')
+              ? cleanCnpj
+              : (c.id && c.id !== 'comp-matriz' && c.id !== 'emp-matriz' ? c.id : (c.documento_identificador || c.documentoIdentificador || '00000000000001'));
             return {
               id: tenantId,
-              name: c.name,
-              tradeName: c.trade_name || c.tradeName || c.name,
+              name: c.name || c.trade_name || 'Empresa',
+              tradeName: c.trade_name || c.tradeName || c.name || 'Empresa',
               cnpj: c.cnpj || '00.000.000/0000-00',
               paisOrigem: c.pais_origem || c.paisOrigem || 'BR',
               tipoDocumento: c.tipo_documento || c.tipoDocumento || 'CNPJ',
-              documentoIdentificador: c.documento_identificador || c.documentoIdentificador || cleanCnpj || '00000000000001',
+              documentoIdentificador: c.documento_identificador || c.documentoIdentificador || tenantId,
               city: c.city || '',
               state: c.state || '',
               phone: c.phone || '',
@@ -408,9 +434,28 @@ export default function App() {
               segment: c.segment || 'Alimentos e Bebidas',
               active: c.is_active !== 0 && c.is_active !== false && c.active !== false,
               createdAt: c.created_at || c.createdAt || new Date().toISOString(),
+              databaseConfig: c.databaseConfig || c.database_config,
             };
           });
-          setCompanies(mappedCompanies);
+
+          // Deduplica por id para prevenir colisão de chaves
+          const seenIds = new Set<string>();
+          const uniqueCompanies: Company[] = [];
+          for (const comp of mappedCompanies) {
+            if (!seenIds.has(comp.id)) {
+              seenIds.add(comp.id);
+              uniqueCompanies.push(comp);
+            } else {
+              const existingIdx = uniqueCompanies.findIndex((x) => x.id === comp.id);
+              if (existingIdx >= 0 && comp.databaseConfig && !uniqueCompanies[existingIdx].databaseConfig) {
+                uniqueCompanies[existingIdx].databaseConfig = comp.databaseConfig;
+              }
+            }
+          }
+
+          if (uniqueCompanies.length > 0) {
+            setCompanies(uniqueCompanies);
+          }
         }
       }
     });
@@ -447,17 +492,42 @@ export default function App() {
   };
 
   const handleRegisterUser = (newUser: AuthUser) => {
+    // 1. Registra no estado de usuários individuais
     setRegisteredUsers((prev) => [newUser, ...prev]);
+
+    // 2. Adiciona à lista de colaboradores da empresa como 'bloqueado' para aguardar aprovação de gerente
+    const newEmployee: Employee = {
+      id: newUser.id,
+      companyId: newUser.companyId,
+      name: newUser.name,
+      email: newUser.email,
+      phone: newUser.phone || '',
+      role: (newUser.role as EmployeeRole) || 'conferente',
+      status: 'bloqueado', // Regra: criado como bloqueado e aguarda aprovação de gerente
+      createdAt: new Date().toISOString(),
+      matricula: newUser.matricula,
+      notes: `Cadastro individual via tela de login (Matrícula: ${newUser.matricula || 'N/I'}) - Aguardando aprovação de gerente`,
+    };
+
+    setEmployees((prev) => [
+      newEmployee,
+      ...prev.filter(
+        (e) => e.id !== newEmployee.id && e.email.toLowerCase() !== newEmployee.email.toLowerCase()
+      ),
+    ]);
+
     const rawSecret = newUser.pin || '1234';
     const secureHash = rawSecret.startsWith('sha256$') ? rawSecret : hashPassword(rawSecret);
-    // ALIMENTAÇÃO DA ROTA DO BANCO DE DADOS (Hash protegido)
+    // ALIMENTAÇÃO DA ROTA DO BANCO DE DADOS (Hash protegido e status bloqueado)
     syncEntityToDatabase('system_users', {
       ...newUser,
       companyId: newUser.companyId,
       tenant_id: newUser.companyId,
       password_hash: secureHash,
-      pin: '[PROTEGIDO]',
-      is_active: true,
+      pin: secureHash,
+      status: 'bloqueado',
+      matricula: newUser.matricula,
+      is_active: false,
     });
   };
 
@@ -767,6 +837,19 @@ export default function App() {
     });
     // ALIMENTAÇÃO DA ROTA DO BANCO DE DADOS
     syncEntityToDatabase('tenants_companies', company);
+
+    // Se possui parâmetros de banco vinculados ao tenant, salva explicitamente no endpoint de tenant
+    if (company.databaseConfig) {
+      fetch('/api/database/save-tenant-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tenantId: company.id,
+          companyId: company.id,
+          databaseConfig: company.databaseConfig,
+        }),
+      }).catch(() => {});
+    }
   };
 
   const handleDeleteCompany = (id: string) => {
@@ -816,9 +899,15 @@ export default function App() {
       return [fullEmp, ...prev];
     });
 
+    const finalPlainPassword = emp.password || '@dm!n2026';
+    const secureHash = finalPlainPassword.startsWith('sha256$')
+      ? finalPlainPassword
+      : hashPassword(finalPlainPassword);
+
     // Registra nos acessos autenticados para permitir login imediato
     setRegisteredUsers((prev) => {
       const exists = prev.some((u) => u.id === fullEmp.id || u.email.toLowerCase() === fullEmp.email.toLowerCase());
+      const existingUser = prev.find((u) => u.id === fullEmp.id || u.email.toLowerCase() === fullEmp.email.toLowerCase());
       const authUser: AuthUser = {
         id: fullEmp.id,
         name: fullEmp.name,
@@ -827,8 +916,10 @@ export default function App() {
         companyId: fullEmp.companyId,
         companyName: activeCompany?.name || 'CEC Conecta',
         phone: fullEmp.phone,
-        pin: '@dm!n2026',
+        pin: emp.password ? secureHash : (existingUser?.pin || secureHash),
         lastLogin: new Date().toISOString(),
+        status: fullEmp.status,
+        matricula: fullEmp.matricula,
       };
       if (exists) {
         return prev.map((u) => (u.id === fullEmp.id || u.email.toLowerCase() === fullEmp.email.toLowerCase() ? authUser : u));
@@ -837,17 +928,65 @@ export default function App() {
     });
 
     // ALIMENTAÇÃO DA ROTA DO BANCO DE DADOS (Persistência no SGBD com hash seguro)
-    const rawPin = (fullEmp as any).pin || '*******';
-    const secureHash = rawPin.startsWith('sha256$') ? rawPin : hashPassword(rawPin);
-
     syncEntityToDatabase('system_users', {
       ...fullEmp,
       companyId: cleanTenant,
       tenant_id: cleanTenant,
       password_hash: secureHash,
       pin: '[PROTEGIDO]',
+      status: fullEmp.status,
+      matricula: fullEmp.matricula,
       is_active: fullEmp.status === 'ativo',
     });
+  };
+
+  // Alteração de Senha do Usuário (Tela Inicial e Menu de Perfil)
+  const handleUpdateUserPassword = async (email: string, newPlainPassword: string, tenantId?: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const newHash = hashPassword(newPlainPassword.trim());
+
+    // 1. Atualiza acessos em registeredUsers
+    setRegisteredUsers((prev) => {
+      const idx = prev.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], pin: newHash };
+        return copy;
+      }
+      return prev;
+    });
+
+    // 2. Atualiza funcionário se cadastrado
+    setEmployees((prev) =>
+      prev.map((e) => {
+        if (e.email.toLowerCase() === cleanEmail) {
+          return { ...e, password: newPlainPassword.trim() };
+        }
+        return e;
+      })
+    );
+
+    // 3. Atualiza authUser ativo se for o mesmo e-mail
+    if (authUser && authUser.email.toLowerCase() === cleanEmail) {
+      setAuthUser((prev) => (prev ? { ...prev, pin: newHash } : null));
+    }
+
+    // 4. Sincroniza com o banco de dados relacional
+    const targetUser = registeredUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (targetUser) {
+      syncEntityToDatabase('system_users', {
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: targetUser.role,
+        companyId: targetUser.companyId || tenantId || '00000000000001',
+        tenant_id: targetUser.companyId || tenantId || '00000000000001',
+        password_hash: newHash,
+        pin: '[PROTEGIDO]',
+      });
+    }
+
+    return true;
   };
 
   const handleDeleteEmployee = (id: string) => {
@@ -869,14 +1008,24 @@ export default function App() {
       alert('Somente Administrador ou Gerente podem excluir ou bloquear cadastros de Gerente.');
       return;
     }
+    const newStatus: 'ativo' | 'bloqueado' = target.status === 'ativo' ? 'bloqueado' : 'ativo';
     setEmployees((prev) =>
       prev.map((e) => {
         if (e.id === id) {
-          const updated = { ...e, status: (e.status === 'ativo' ? 'bloqueado' : 'ativo') as 'ativo' | 'bloqueado' };
+          const updated = { ...e, status: newStatus };
           syncEntityToDatabase('system_users', updated);
           return updated;
         }
         return e;
+      })
+    );
+    // Também atualiza o status em registeredUsers para permitir ou bloquear o login
+    setRegisteredUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === id || u.email.toLowerCase() === target.email.toLowerCase()) {
+          return { ...u, status: newStatus };
+        }
+        return u;
       })
     );
   };
@@ -966,6 +1115,7 @@ export default function App() {
         onRegisterUser={handleRegisterUser}
         companies={companies}
         activeCompanyId={activeCompanyId}
+        onUpdateUserPassword={handleUpdateUserPassword}
       />
     );
   }
@@ -996,6 +1146,7 @@ export default function App() {
         }}
         authUser={authUser}
         onLogout={handleLogout}
+        onOpenChangePassword={() => setIsChangePasswordModalOpen(true)}
         defaultCountDays={countSchedule.defaultDays}
         activeCompanyName={activeCompany?.name || 'CEC Conecta'}
         onOpenCompanyModal={() => setIsCompanyModalOpen(true)}
@@ -1301,6 +1452,16 @@ export default function App() {
         currentRole={currentRole}
         currentUserName={authUser ? `${authUser.name} (${authUser.role})` : 'Administrador Geral'}
         initialTab={systemSettingsTab}
+      />
+
+      {/* MODAL: Alteração de Senha do Usuário Autenticado */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        currentUserEmail={authUser?.email}
+        currentUserName={authUser?.name}
+        companyName={activeCompany?.tradeName || activeCompany?.name}
+        onSavePassword={(email, newPass) => handleUpdateUserPassword(email, newPass, activeCompany?.id)}
       />
 
       {/* Subtle Footer */}

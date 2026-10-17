@@ -61,10 +61,14 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
 
   // Sincroniza a aba ativa quando initialTab mudar ao abrir
   useEffect(() => {
-    if (isOpen && initialTab) {
-      setActiveTab(initialTab);
+    if (isOpen) {
+      if (currentRole === 'gerente' && initialTab === 'database') {
+        setActiveTab('precos');
+      } else if (initialTab) {
+        setActiveTab(initialTab);
+      }
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, currentRole]);
 
   // Database configuration state
   const [databaseConfig, setDatabaseConfig] = useState<DatabaseConnectionConfig>(
@@ -253,14 +257,14 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
       targetCmvPercent: Number(targetCmvPercent) || 28.5,
       criticalAlertThreshold: Number(criticalAlertThreshold) || 1.0,
 
-      databaseConfig,
+      databaseConfig: currentRole === 'administrador' ? databaseConfig : (settings.databaseConfig || databaseConfig),
 
       updatedAt: new Date().toISOString(),
       updatedBy: currentUserName,
     };
 
     onSaveSettings(updated);
-    if (activeCompany && onSaveCompany && databaseConfig) {
+    if (activeCompany && onSaveCompany && currentRole === 'administrador' && databaseConfig) {
       onSaveCompany({
         ...activeCompany,
         databaseConfig,
@@ -409,24 +413,26 @@ export const SystemSettingsModal: React.FC<SystemSettingsModalProps> = ({
                 <span>4. Metas CMV & Indicadores</span>
               </button>
 
-              <button
-                type="button"
-                id="tab-settings-database"
-                onClick={() => setActiveTab('database')}
-                className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
-                  activeTab === 'database'
-                    ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>5. Vincular Banco de Dados</span>
-                {databaseConfig?.tablesCreated ? (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400" title="Tabelas Criadas com Sucesso" />
-                ) : databaseConfig?.status === 'conectado' ? (
-                  <span className="w-2 h-2 rounded-full bg-cyan-400" title="Banco Conectado" />
-                ) : null}
-              </button>
+              {currentRole === 'administrador' && (
+                <button
+                  type="button"
+                  id="tab-settings-database"
+                  onClick={() => setActiveTab('database')}
+                  className={`py-3 px-4 text-xs font-bold border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+                    activeTab === 'database'
+                      ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10'
+                      : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                  }`}
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span>5. Vincular Banco de Dados</span>
+                  {databaseConfig?.tablesCreated ? (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" title="Tabelas Criadas com Sucesso" />
+                  ) : databaseConfig?.status === 'conectado' ? (
+                    <span className="w-2 h-2 rounded-full bg-cyan-400" title="Banco Conectado" />
+                  ) : null}
+                </button>
+              )}
             </div>
 
             {/* Scrollable Content Form */}

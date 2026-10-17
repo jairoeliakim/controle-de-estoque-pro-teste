@@ -97,8 +97,8 @@ export const Navigation: React.FC<NavigationProps> = ({
     },
     {
       id: 'catalogo',
-      label: 'Catálogo & Estoque',
-      description: 'Itens, limites e configurações',
+      label: 'Produtos',
+      description: 'Gerencie os produtos do restaurante',
       icon: <Layers className="w-4 h-4" />,
       highlightRole: ['administrador'],
     },

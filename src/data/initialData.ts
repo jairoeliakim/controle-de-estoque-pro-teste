@@ -132,5 +132,7 @@ export const INITIAL_DEMO_USERS: AuthUser[] = [
     phone: '(31)99947-2865',
     pin: '@dm!n2026',
     lastLogin: new Date().toISOString(),
+    status: 'ativo',
+    matricula: 'ADM-001',
   },
 ];

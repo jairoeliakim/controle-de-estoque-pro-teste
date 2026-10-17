@@ -147,3 +147,34 @@ export function verifyPassword(inputPassword: string, storedSecret?: string): bo
   // 3. Fallback para senha em texto plano legado (permitindo migração transparente)
   return trimmedInput === trimmedStored;
 }
+
+/**
+ * Gera uma senha aleatória forte e amigável (maiúsculas, minúsculas, números e símbolos)
+ */
+export function generateRandomPassword(length: number = 10): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const numbers = '23456789';
+  const symbols = '!@#$%&*';
+
+  // Garante ao menos um caractere de cada categoria
+  let chars = [
+    upper[Math.floor(Math.random() * upper.length)],
+    lower[Math.floor(Math.random() * lower.length)],
+    numbers[Math.floor(Math.random() * numbers.length)],
+    symbols[Math.floor(Math.random() * symbols.length)],
+  ];
+
+  const all = upper + lower + numbers + symbols;
+  for (let i = chars.length; i < length; i++) {
+    chars.push(all[Math.floor(Math.random() * all.length)]);
+  }
+
+  // Embaralha
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
+}

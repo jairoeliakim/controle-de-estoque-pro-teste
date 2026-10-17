@@ -70,7 +70,7 @@ function sendRateLimited(res: Response, seconds: number, message: string) {
 }
 
 /** Reserva uma vaga na cota da ReceitaWS. Retorna os segundos de espera quando não há vaga. */
-function reserveUpstreamSlot(now: number): { ok: true } | { ok: false; seconds: number } {
+function reserveUpstreamSlot(now: number): { ok: true; seconds?: undefined } | { ok: false; seconds: number } {
   if (now < upstreamBlockedUntil) {
     return { ok: false, seconds: Math.max(1, Math.ceil((upstreamBlockedUntil - now) / 1000)) };
   }
@@ -217,11 +217,12 @@ receitaWsRouter.get('/receitaws/:cnpj', clientRateLimit, async (req, res) => {
     if (!pending) {
       // 3. Reserva vaga na cota global da ReceitaWS antes de chamar
       const slot = reserveUpstreamSlot(now);
-      if (!slot.ok) {
+      if (slot.ok === false) {
+        const waitSec = slot.seconds ?? 60;
         return sendRateLimited(
           res,
-          slot.seconds,
-          `Limite da API pública da Receita Federal atingido (máximo de 3 consultas por minuto). Tente novamente em ${slot.seconds} segundo(s).`
+          waitSec,
+          `Limite da API pública da Receita Federal atingido (máximo de 3 consultas por minuto). Tente novamente em ${waitSec} segundo(s).`
         );
       }
 

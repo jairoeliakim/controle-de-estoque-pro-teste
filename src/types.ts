@@ -144,6 +144,8 @@ export interface Employee {
   createdAt: string;
   notes?: string;
   lastLogin?: string;
+  password?: string;
+  matricula?: string;
 }
 
 export interface SupplierProductLink {
@@ -485,6 +487,9 @@ export interface AuthUser {
   avatarUrl?: string;
   phone?: string;
   pin?: string;
+  password_hash?: string;
   lastLogin: string;
+  status?: 'ativo' | 'bloqueado';
+  matricula?: string;
 }
 

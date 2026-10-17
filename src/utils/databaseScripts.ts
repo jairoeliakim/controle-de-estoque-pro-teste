@@ -137,13 +137,17 @@ CREATE TABLE IF NOT EXISTS system_users (
     phone VARCHAR(30),
     pin VARCHAR(40),
     is_active BOOLEAN DEFAULT TRUE,
+    status VARCHAR(30) DEFAULT 'ativo',
+    matricula VARCHAR(50),
     last_login TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email)
 );
 
--- Garante tamanho suficiente do campo pin em bancos criados com a versão anterior (VARCHAR(10))
+-- Garante tamanho e novas colunas em bancos criados anteriormente
 ALTER TABLE system_users ALTER COLUMN pin TYPE VARCHAR(40);
+ALTER TABLE system_users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ativo';
+ALTER TABLE system_users ADD COLUMN IF NOT EXISTS matricula VARCHAR(50);
 
 -- 3. PARAMETRIZAÇÃO SISTÊMICA & POLÍTICAS
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -422,6 +426,8 @@ CREATE TABLE IF NOT EXISTS system_users (
     phone VARCHAR(30),
     pin VARCHAR(40),
     is_active TINYINT(1) DEFAULT 1,
+    status VARCHAR(30) DEFAULT 'ativo',
+    matricula VARCHAR(50),
     last_login DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants_companies(id) ON DELETE CASCADE,
@@ -724,6 +730,8 @@ BEGIN
         phone NVARCHAR(30),
         pin NVARCHAR(40),
         is_active BIT DEFAULT 1,
+        status NVARCHAR(30) DEFAULT N'ativo',
+        matricula NVARCHAR(50),
         last_login DATETIMEOFFSET,
         created_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),
         CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email)

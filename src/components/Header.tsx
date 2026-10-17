@@ -19,6 +19,9 @@ import {
   FileQuestion,
   Sun,
   Moon,
+  KeyRound,
+  LogOut,
+  Sliders,
 } from 'lucide-react';
 import { useBilling } from '../context/BillingContext';
 import { useTheme } from '../context/ThemeContext';
@@ -37,7 +40,6 @@ import {
   canAccessSystemSettings,
   AuthUser,
 } from '../types';
-import { Sliders, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   currentRole: UserRole;
@@ -59,6 +61,7 @@ interface HeaderProps {
   onOpenEmployeesModal?: () => void;
   pendingUnlistedCount?: number;
   onOpenUnlistedApprovalModal?: () => void;
+  onOpenChangePassword?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -81,6 +84,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenEmployeesModal,
   pendingUnlistedCount = 0,
   onOpenUnlistedApprovalModal,
+  onOpenChangePassword,
 }) => {
   const dayIndexMap: Record<number, CountDay> = {
     0: 'domingo',
@@ -157,15 +161,15 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Logo and Brand */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/20 border border-amber-300/30">
-              <span className="font-extrabold text-slate-950 text-xl tracking-tight">CE</span>
+              <span className="font-extrabold text-slate-950 text-base tracking-tight">CEC</span>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-slate-100 tracking-tight">
-                  Controle de Estoque & CMV
+                  CEC CONECTA
                 </h1>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-medium">
-                  Restaurante Pro
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold max-w-[180px] truncate">
+                  {activeCompanyName || 'CEC Conecta'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
@@ -273,10 +277,10 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 id="btn-add-item-modal"
                 onClick={onOpenNewItemModal}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-750 hover:text-white transition-all active:scale-95"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-all active:scale-95 shadow-sm"
               >
                 <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Novo Item</span>
+                <span>Novo Produto</span>
               </button>
             )}
 
@@ -352,6 +356,16 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="font-bold text-slate-200 block text-[11px] truncate max-w-[120px]">{authUser.name}</span>
                   <span className="text-[10px] text-slate-400 capitalize">{authUser.role}</span>
                 </div>
+                {onOpenChangePassword && (
+                  <button
+                    type="button"
+                    onClick={onOpenChangePassword}
+                    className="p-1 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 transition-all cursor-pointer ml-0.5"
+                    title="Alterar minha senha de acesso"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {onLogout && (
                   <button
                     type="button"
