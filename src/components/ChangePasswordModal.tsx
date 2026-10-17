@@ -190,7 +190,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               </button>
             </div>
             <span className="text-[10px] text-slate-500 mt-1 block">
-              Caso seja o primeiro acesso, a senha padrão é <code className="bg-slate-800 px-1 py-0.5 rounded text-slate-300">@dm!n2026</code>.
+              Caso seja o primeiro acesso, use a senha inicial informada pelo administrador.
             </span>
           </div>
 

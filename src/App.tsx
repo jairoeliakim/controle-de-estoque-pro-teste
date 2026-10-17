@@ -14,7 +14,8 @@ import {
   INITIAL_EMPLOYEES,
 } from './data/initialData';
 import { syncEntityToDatabase, deleteEntityFromDatabase, fetchAllDatabaseData } from './utils/databaseSync';
-import { hashPassword } from './utils/passwordSecurity';
+import { hashPassword, pickStoredSecret } from './utils/passwordSecurity';
+import { mapDbUserToAuthUser, mergeAuthUsers } from './utils/authUserMapping';
 import {
   CountDay,
   CountScheduleConfig,
@@ -92,16 +93,7 @@ export default function App() {
   const [currentRole, setCurrentRole] = useState<UserRole>('administrador');
 
   // Active View Tab (Default: Contagem se conferente, caso contrário Estoque)
-  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
-    try {
-      const savedUserStr = localStorage.getItem('ce_auth_user');
-      if (savedUserStr) {
-        const u = JSON.parse(savedUserStr);
-        if (u.role === 'conferente') return 'contagem';
-      }
-    } catch {}
-    return 'estoque';
-  });
+  const [activeTab, setActiveTab] = useState<ActiveTab>('estoque');
 
   // Core Data loaded from localStorage or defaults
   const [items, setItems] = useState<StockItem[]>(() => {
@@ -216,17 +208,8 @@ export default function App() {
   });
 
   // Usuário Autenticado Ativo (Acesso Individual)
-  const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
-    const saved = localStorage.getItem('ce_auth_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
+  // A sessão NÃO é restaurada: ao carregar a aplicação sempre abre a tela de login.
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
 
   // Sync to localStorage
   useEffect(() => {
@@ -265,13 +248,10 @@ export default function App() {
     localStorage.setItem('ce_users', JSON.stringify(registeredUsers));
   }, [registeredUsers]);
 
+  // Remove qualquer sessão antiga salva no navegador (versões anteriores persistiam o login)
   useEffect(() => {
-    if (authUser) {
-      localStorage.setItem('ce_auth_user', JSON.stringify(authUser));
-    } else {
-      localStorage.removeItem('ce_auth_user');
-    }
-  }, [authUser]);
+    localStorage.removeItem('ce_auth_user');
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('ce_companies', JSON.stringify(companies));
@@ -384,32 +364,9 @@ export default function App() {
           }
 
           // Acessos autenticados
-          const mappedAuthUsers: AuthUser[] = dbData.tables.system_users.map((u: any) => ({
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            companyId: u.tenant_id || u.companyId || '00000000000001',
-            companyName: 'CEC Conecta',
-            avatarUrl: '',
-            phone: u.phone,
-            pin: u.pin || u.password_hash || '*******',
-            lastLogin: u.last_login || u.lastLogin,
-            status: u.is_active === 0 || u.is_active === false || u.status === 'bloqueado' ? 'bloqueado' : 'ativo',
-            matricula: u.matricula,
-          }));
-          setRegisteredUsers((prev) => {
-            const merged = [...prev];
-            mappedAuthUsers.forEach((nu) => {
-              const idx = merged.findIndex((x) => x.id === nu.id || x.email.toLowerCase() === nu.email.toLowerCase());
-              if (idx >= 0) {
-                merged[idx] = nu;
-              } else {
-                merged.push(nu);
-              }
-            });
-            return merged;
-          });
+          // O hash fica em password_hash; a coluna pin do banco guarda só um marcador (não é a senha)
+          const mappedAuthUsers: AuthUser[] = dbData.tables.system_users.map(mapDbUserToAuthUser);
+          setRegisteredUsers((prev) => mergeAuthUsers(prev, mappedAuthUsers));
         }
 
         // 4. Empresas (Tenant identificado pelo CNPJ sem traços)
@@ -908,6 +865,7 @@ export default function App() {
     setRegisteredUsers((prev) => {
       const exists = prev.some((u) => u.id === fullEmp.id || u.email.toLowerCase() === fullEmp.email.toLowerCase());
       const existingUser = prev.find((u) => u.id === fullEmp.id || u.email.toLowerCase() === fullEmp.email.toLowerCase());
+      const finalSecret = emp.password ? secureHash : (pickStoredSecret(existingUser?.password_hash, existingUser?.pin) || secureHash);
       const authUser: AuthUser = {
         id: fullEmp.id,
         name: fullEmp.name,
@@ -916,7 +874,8 @@ export default function App() {
         companyId: fullEmp.companyId,
         companyName: activeCompany?.name || 'CEC Conecta',
         phone: fullEmp.phone,
-        pin: emp.password ? secureHash : (existingUser?.pin || secureHash),
+        pin: finalSecret,
+        password_hash: finalSecret,
         lastLogin: new Date().toISOString(),
         status: fullEmp.status,
         matricula: fullEmp.matricula,
@@ -950,7 +909,7 @@ export default function App() {
       const idx = prev.findIndex((u) => u.email.toLowerCase() === cleanEmail);
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], pin: newHash };
+        copy[idx] = { ...copy[idx], pin: newHash, password_hash: newHash };
         return copy;
       }
       return prev;
@@ -968,7 +927,7 @@ export default function App() {
 
     // 3. Atualiza authUser ativo se for o mesmo e-mail
     if (authUser && authUser.email.toLowerCase() === cleanEmail) {
-      setAuthUser((prev) => (prev ? { ...prev, pin: newHash } : null));
+      setAuthUser((prev) => (prev ? { ...prev, pin: newHash, password_hash: newHash } : null));
     }
 
     // 4. Sincroniza com o banco de dados relacional

@@ -178,3 +178,25 @@ export function generateRandomPassword(length: number = 10): string {
 
   return chars.join('');
 }
+
+
+// Textos que o sistema grava no lugar da senha real (nunca são um segredo válido para comparar)
+const PLACEHOLDER_SECRETS = ['[PROTEGIDO]', '[PROTEGIDO_CRIPTOGRAFADO]'];
+
+/**
+ * Indica se o valor é um segredo utilizável (hash ou senha legada) e não um marcador
+ * como "[PROTEGIDO_CRIPTOGRAFADO]" ou um texto mascarado ("*******").
+ */
+export function isUsableSecret(value?: string | null): value is string {
+  if (!value) return false;
+  const t = value.trim();
+  return t.length > 0 && !PLACEHOLDER_SECRETS.includes(t) && !/^\*+$/.test(t);
+}
+
+/**
+ * Escolhe, na ordem informada, o primeiro segredo utilizável.
+ * Uso: pickStoredSecret(user.password_hash, user.pin)
+ */
+export function pickStoredSecret(...candidates: Array<string | null | undefined>): string | undefined {
+  return candidates.find((c) => isUsableSecret(c)) ?? undefined;
+}

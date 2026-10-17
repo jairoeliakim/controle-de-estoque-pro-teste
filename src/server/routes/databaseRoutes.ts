@@ -397,7 +397,7 @@ let tenantDatabaseConfigs: Record<string, typeof linkedDatabaseState> = {};
 
 // Estado do vínculo SEM a senha (usado nas respostas da API)
 function publicDbState() {
-  const { password: _password, ...rest } = linkedDatabaseState;
+  const { password: _password, tenantConfigs: _tenantConfigs, ...rest } = linkedDatabaseState as any;
   return rest;
 }
 
@@ -424,7 +424,10 @@ function tryRestorePersistedConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE_PATH)) {
       const content = fs.readFileSync(CONFIG_FILE_PATH, 'utf-8');
-      const loaded = JSON.parse(content);
+      const loadedFile = JSON.parse(content);
+      // `tenantConfigs` pertence ao mapa de tenants, não ao estado do vínculo: copiá-lo para o estado
+      // cria uma referência circular (o estado passaria a conter o mapa que contém o estado).
+      const { tenantConfigs: _persistedTenantConfigs, ...loaded } = loadedFile || {};
       if (loaded && loaded.database && loaded.host) {
         const isLocal = loaded.host === 'localhost' || loaded.host === '127.0.0.1';
         linkedDatabaseState = {
@@ -434,8 +437,8 @@ function tryRestorePersistedConfig() {
           status: isLocal && !loaded.isSimulationMode ? 'desconectado' : loaded.status,
         };
 
-        if (loaded.tenantConfigs && typeof loaded.tenantConfigs === 'object') {
-          tenantDatabaseConfigs = loaded.tenantConfigs;
+        if (_persistedTenantConfigs && typeof _persistedTenantConfigs === 'object') {
+          tenantDatabaseConfigs = _persistedTenantConfigs;
         } else {
           // Atribui ao tenant padrão '00000000000001' a configuração carregada
           tenantDatabaseConfigs['00000000000001'] = { ...linkedDatabaseState };
@@ -2103,7 +2106,7 @@ databaseRouter.get('/database/all-data', async (_req: Request, res: Response) =>
     result.tenants_companies = result.tenants_companies.map((c: any) => {
       const tenantCfg = tenantDatabaseConfigs[c.id];
       if (tenantCfg) {
-        const { password: _p, ...cleanCfg } = tenantCfg;
+        const { password: _p, tenantConfigs: _tc, ...cleanCfg } = tenantCfg as any;
         return { ...c, databaseConfig: cleanCfg };
       }
       return c;
@@ -2113,7 +2116,7 @@ databaseRouter.get('/database/all-data', async (_req: Request, res: Response) =>
   // Sanitiza mapa de tenants para o retorno
   const sanitizedTenants: Record<string, any> = {};
   for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
-    const { password: _p, ...cleanCfg } = tCfg;
+    const { password: _p, tenantConfigs: _tc, ...cleanCfg } = tCfg as any;
     sanitizedTenants[tId] = cleanCfg;
   }
 
@@ -2198,7 +2201,11 @@ databaseRouter.get('/database/table-data/:table', (req: Request, res: Response) 
     });
   }
 
-  const rows = Array.from(targetTable.values());
+  let rows = Array.from(targetTable.values());
+  if (tableName === 'system_users') {
+    // Nunca expõe senha/PIN (nem o padrão inicial) pela API de visualização
+    rows = rows.map((r: any) => ({ ...r, password_hash: '[PROTEGIDO]', pin: '[PROTEGIDO]' }));
+  }
   return res.json({
     success: true,
     table: tableName,

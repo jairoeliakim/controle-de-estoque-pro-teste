@@ -1235,13 +1235,17 @@ CREATE TABLE IF NOT EXISTS system_users (
     phone VARCHAR(30),
     pin VARCHAR(40),
     is_active BOOLEAN DEFAULT TRUE,
+    status VARCHAR(30) DEFAULT 'ativo',
+    matricula VARCHAR(50),
     last_login TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email)
 );
 
--- Garante tamanho suficiente do campo pin em bancos criados com a vers\xE3o anterior (VARCHAR(10))
+-- Garante tamanho e novas colunas em bancos criados anteriormente
 ALTER TABLE system_users ALTER COLUMN pin TYPE VARCHAR(40);
+ALTER TABLE system_users ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'ativo';
+ALTER TABLE system_users ADD COLUMN IF NOT EXISTS matricula VARCHAR(50);
 
 -- 3. PARAMETRIZA\xC7\xC3O SIST\xCAMICA & POL\xCDTICAS
 CREATE TABLE IF NOT EXISTS system_settings (
@@ -1465,7 +1469,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_access_key ON invoices_history(tenant_id
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USU\xC1RIO ADMINISTRADOR PADR\xC3O
--- Senha Inicial de Primeiro Acesso: *******
+-- Senha inicial de primeiro acesso: definida pelo sistema (armazenada apenas como hash)
 -- ==============================================================================
 INSERT INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
 VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', TRUE)
@@ -1519,6 +1523,8 @@ CREATE TABLE IF NOT EXISTS system_users (
     phone VARCHAR(30),
     pin VARCHAR(40),
     is_active TINYINT(1) DEFAULT 1,
+    status VARCHAR(30) DEFAULT 'ativo',
+    matricula VARCHAR(50),
     last_login DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants_companies(id) ON DELETE CASCADE,
@@ -1763,7 +1769,7 @@ CREATE TABLE IF NOT EXISTS invoices_history (
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USU\xC1RIO ADMINISTRADOR PADR\xC3O
--- Senha Inicial de Primeiro Acesso: ******
+-- Senha inicial de primeiro acesso: definida pelo sistema (armazenada apenas como hash)
 -- ==============================================================================
 INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
 VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
@@ -1819,6 +1825,8 @@ BEGIN
         phone NVARCHAR(30),
         pin NVARCHAR(40),
         is_active BIT DEFAULT 1,
+        status NVARCHAR(30) DEFAULT N'ativo',
+        matricula NVARCHAR(50),
         last_login DATETIMEOFFSET,
         created_at DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),
         CONSTRAINT uq_user_tenant_email UNIQUE (tenant_id, email)
@@ -2083,7 +2091,7 @@ END;
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USU\xC1RIO ADMINISTRADOR PADR\xC3O
--- Senha Inicial de Primeiro Acesso:******
+-- Senha inicial de primeiro acesso: definida pelo sistema (armazenada apenas como hash)
 -- ==============================================================================
 IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = '00000000000001')
 BEGIN
@@ -2561,13 +2569,22 @@ var linkedDatabaseState = {
   tablesCreated: false,
   totalRecordsCount: 0
 };
+var tenantDatabaseConfigs = {};
 function publicDbState() {
-  const { password: _password, ...rest } = linkedDatabaseState;
+  const { password: _password, tenantConfigs: _tenantConfigs, ...rest } = linkedDatabaseState;
   return rest;
 }
 function savePersistedConfig(state) {
+  if (process.env.VERCEL) {
+    console.info("[DB Config] Vercel detectada: configura\xE7\xE3o mantida por vari\xE1veis de ambiente; arquivo local n\xE3o \xE9 persistente.");
+    return;
+  }
   try {
-    import_fs.default.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(state, null, 2), "utf-8");
+    const toSave = {
+      ...state,
+      tenantConfigs: tenantDatabaseConfigs
+    };
+    import_fs.default.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(toSave, null, 2), "utf-8");
   } catch (err) {
     console.warn("[DB Config Save Warning]:", err.message);
   }
@@ -2576,13 +2593,22 @@ function tryRestorePersistedConfig() {
   try {
     if (import_fs.default.existsSync(CONFIG_FILE_PATH)) {
       const content = import_fs.default.readFileSync(CONFIG_FILE_PATH, "utf-8");
-      const loaded = JSON.parse(content);
+      const loadedFile = JSON.parse(content);
+      const { tenantConfigs: _persistedTenantConfigs, ...loaded } = loadedFile || {};
       if (loaded && loaded.database && loaded.host) {
+        const isLocal = loaded.host === "localhost" || loaded.host === "127.0.0.1";
         linkedDatabaseState = {
           ...linkedDatabaseState,
-          ...loaded
+          ...loaded,
+          // Evita assumir conectado em localhost em contêiner se não for modo simulado
+          status: isLocal && !loaded.isSimulationMode ? "desconectado" : loaded.status
         };
-        console.info(`[DB Config Loaded] Banco pr\xE9-configurado: ${linkedDatabaseState.engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database} (status: ${linkedDatabaseState.status})`);
+        if (_persistedTenantConfigs && typeof _persistedTenantConfigs === "object") {
+          tenantDatabaseConfigs = _persistedTenantConfigs;
+        } else {
+          tenantDatabaseConfigs["00000000000001"] = { ...linkedDatabaseState };
+        }
+        console.info(`[DB Config Loaded] Banco pr\xE9-configurado: ${linkedDatabaseState.engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database} (status: ${linkedDatabaseState.status}) - ${Object.keys(tenantDatabaseConfigs).length} tenant(s) parametrizado(s)`);
       }
     }
   } catch (err) {
@@ -2590,35 +2616,59 @@ function tryRestorePersistedConfig() {
   }
 }
 function restoreConfigFromEnv() {
+  const defaultTenantId = String(process.env.DEFAULT_TENANT_ID || "00000000000001").trim();
   const url = process.env.DATABASE_URL;
-  if (!url) return;
   try {
-    const u = new URL(url);
-    const proto = u.protocol.replace(":", "").toLowerCase();
-    const engine = proto.startsWith("postgres") ? "postgres" : proto.startsWith("mysql") ? "mysql" : null;
-    if (!engine) {
-      console.warn("[DB Env Warning]: DATABASE_URL deve come\xE7ar com postgresql:// ou mysql://");
-      return;
+    let config = null;
+    if (url) {
+      const u = new URL(url);
+      const proto = u.protocol.replace(":", "").toLowerCase();
+      const engine = proto.startsWith("postgres") ? "postgres" : proto.startsWith("mysql") ? "mysql" : null;
+      if (!engine) {
+        console.warn("[DB Env Warning]: DATABASE_URL deve come\xE7ar com postgresql:// ou mysql://");
+        return;
+      }
+      const sslMode = (u.searchParams.get("sslmode") || "").toLowerCase();
+      config = {
+        ...linkedDatabaseState,
+        engine,
+        host: u.hostname,
+        port: Number(u.port) || (engine === "postgres" ? 5432 : 3306),
+        database: decodeURIComponent(u.pathname.replace(/^\//, "")) || (engine === "postgres" ? "postgres" : ""),
+        username: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        ssl: sslMode ? sslMode !== "disable" : (process.env.DB_SSL || "true").toLowerCase() !== "false",
+        status: "conectado",
+        isSimulationMode: false,
+        databaseExists: true,
+        errorMessage: void 0,
+        lastConnectedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+    } else if (process.env.DB_HOST && process.env.DB_NAME && process.env.DB_USER) {
+      const engine = (process.env.DB_ENGINE || "postgres").toLowerCase();
+      config = {
+        ...linkedDatabaseState,
+        engine,
+        host: process.env.DB_HOST,
+        port: Number(process.env.DB_PORT) || (engine === "postgres" ? 5432 : 3306),
+        database: process.env.DB_NAME,
+        username: process.env.DB_USER,
+        password: process.env.DB_PASSWORD || "",
+        ssl: (process.env.DB_SSL || "true").toLowerCase() !== "false",
+        status: "conectado",
+        isSimulationMode: false,
+        databaseExists: true,
+        errorMessage: void 0,
+        lastConnectedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
     }
-    const sslMode = (u.searchParams.get("sslmode") || "").toLowerCase();
-    linkedDatabaseState = {
-      ...linkedDatabaseState,
-      engine,
-      host: u.hostname,
-      port: Number(u.port) || (engine === "postgres" ? 5432 : 3306),
-      database: decodeURIComponent(u.pathname.replace(/^\//, "")) || (engine === "postgres" ? "postgres" : ""),
-      username: decodeURIComponent(u.username),
-      password: decodeURIComponent(u.password),
-      ssl: sslMode !== "disable",
-      status: "conectado",
-      isSimulationMode: false,
-      databaseExists: true,
-      errorMessage: void 0,
-      lastConnectedAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    console.info(`[DB Env Loaded] ${engine.toUpperCase()} em ${linkedDatabaseState.host}:${linkedDatabaseState.port}/${linkedDatabaseState.database}`);
+    if (!config) return;
+    linkedDatabaseState = config;
+    tenantDatabaseConfigs[defaultTenantId] = { ...config };
+    tenantDatabaseConfigs["00000000000001"] = { ...config };
+    console.info(`[DB Env Loaded] ${config.engine.toUpperCase()} configurado por ambiente em ${config.host}:${config.port}/${config.database}`);
   } catch (err) {
-    console.warn("[DB Env Warning]: DATABASE_URL inv\xE1lida:", err.message);
+    console.warn("[DB Env Warning]: configura\xE7\xE3o de banco por ambiente inv\xE1lida:", err.message);
   }
 }
 tryRestorePersistedConfig();
@@ -2682,7 +2732,8 @@ function mapEntityToSqlRow(tableName, entity, defaultTenant = "00000000000001") 
         created_at: entity.createdAt || entity.created_at || now
       };
     case "system_users": {
-      const rawSecret = String(entity.password_hash || entity.pin || "@dm!n2026");
+      const validPin = entity.pin && entity.pin !== "[PROTEGIDO]" && entity.pin !== "[PROTEGIDO_CRIPTOGRAFADO]" ? entity.pin : "";
+      const rawSecret = String(entity.password_hash || entity.password || validPin || "@dm!n2026");
       const secureHash = rawSecret.startsWith("sha256$") || /^[a-f0-9]{64}$/i.test(rawSecret) ? rawSecret : hashPassword(rawSecret);
       return {
         id: String(entity.id),
@@ -2695,6 +2746,8 @@ function mapEntityToSqlRow(tableName, entity, defaultTenant = "00000000000001") 
         pin: "[PROTEGIDO_CRIPTOGRAFADO]",
         // Inibe leitura via banco
         is_active: Boolean(entity.status !== "bloqueado" && entity.is_active !== false && entity.is_active !== 0),
+        status: entity.status || (entity.is_active === false ? "bloqueado" : "ativo"),
+        matricula: entity.matricula ? String(entity.matricula).trim() : null,
         last_login: entity.lastLogin || entity.last_login || null,
         created_at: entity.createdAt || entity.created_at || now
       };
@@ -2851,7 +2904,12 @@ async function checkRowExistsInDb(engine, tableName, id) {
       await conn.end();
       return Array.isArray(rows) && rows.length > 0;
     }
-  } catch {
+  } catch (err) {
+    if (err?.code === "ECONNREFUSED" || err?.code === "ENOTFOUND" || err?.code === "ETIMEDOUT") {
+      linkedDatabaseState.status = "erro";
+      linkedDatabaseState.errorMessage = `Banco inacess\xEDvel (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+      savePersistedConfig(linkedDatabaseState);
+    }
     return false;
   }
   return false;
@@ -3003,6 +3061,11 @@ async function executeRawUpsertDirect(engine, tableName, row) {
       await client.query(sql, values);
       await client.end();
     } catch (err) {
+      if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
+        linkedDatabaseState.status = "erro";
+        linkedDatabaseState.errorMessage = `Banco inacess\xEDvel (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+        savePersistedConfig(linkedDatabaseState);
+      }
       console.warn(`[Raw Upsert Postgres Error on ${tableName}]:`, err.message);
     }
   } else if (engine === "mysql") {
@@ -3023,6 +3086,11 @@ async function executeRawUpsertDirect(engine, tableName, row) {
       await conn.execute(sql, values);
       await conn.end();
     } catch (err) {
+      if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
+        linkedDatabaseState.status = "erro";
+        linkedDatabaseState.errorMessage = `Banco inacess\xEDvel (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+        savePersistedConfig(linkedDatabaseState);
+      }
       console.warn(`[Raw Upsert MySQL Error on ${tableName}]:`, err.message);
     }
   }
@@ -3071,7 +3139,12 @@ async function executeRealSqlUpsert(engine, tableName, mappedRow) {
         await client.end();
         return { success: true, sqlExecuted: debugSql2 };
       } catch (err) {
-        console.error(`[Postgres INSERT Error on ${tableName}]:`, err.message);
+        console.warn(`[Postgres INSERT fallback on ${tableName}]: ${err.message}`);
+        if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
+          linkedDatabaseState.status = "erro";
+          linkedDatabaseState.errorMessage = `Banco inacess\xEDvel (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+          savePersistedConfig(linkedDatabaseState);
+        }
         return { success: false, sqlExecuted: debugSql2, error: err.message };
       }
     }
@@ -3110,7 +3183,12 @@ async function executeRealSqlUpsert(engine, tableName, mappedRow) {
         await conn.end();
         return { success: true, sqlExecuted: debugSql2 };
       } catch (err) {
-        console.error(`[MySQL INSERT Error on ${tableName}]:`, err.message);
+        console.warn(`[MySQL INSERT fallback on ${tableName}]: ${err.message}`);
+        if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
+          linkedDatabaseState.status = "erro";
+          linkedDatabaseState.errorMessage = `Banco inacess\xEDvel (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+          savePersistedConfig(linkedDatabaseState);
+        }
         return { success: false, sqlExecuted: debugSql2, error: err.message };
       }
     }
@@ -3151,7 +3229,12 @@ async function executeRealSqlDelete(engine, tableName, id) {
       }
       return { success: true, sqlExecuted: sql };
     } catch (err) {
-      console.error(`[SQL DELETE Error on ${tableName}]:`, err.message);
+      console.warn(`[SQL DELETE fallback on ${tableName}]: ${err.message}`);
+      if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND" || err.code === "ETIMEDOUT") {
+        linkedDatabaseState.status = "erro";
+        linkedDatabaseState.errorMessage = `Banco inacess\xEDvel (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
+        savePersistedConfig(linkedDatabaseState);
+      }
       return { success: false, sqlExecuted: sql, error: err.message };
     }
   }
@@ -3177,7 +3260,6 @@ function initCleanDatabaseSeed() {
     created_at: (/* @__PURE__ */ new Date("2026-01-01")).toISOString()
   };
   databaseTables.tenants_companies.set(defaultTenantCnpj, defaultCompany);
-  databaseTables.tenants_companies.set("comp-matriz", defaultCompany);
   const defaultCategories = [
     { id: "cat-carnes", name: "Carnes & Prote\xEDnas", description: "Cortes nobres, carnes e aves" },
     { id: "cat-laticinios", name: "Latic\xEDnios & Derivados", description: "Queijos, leites e manteigas" },
@@ -3381,7 +3463,8 @@ databaseRouter.post("/database/test-connection", async (req, res) => {
   });
 });
 databaseRouter.post("/database/link", async (req, res) => {
-  const { engine, host, port, database, username, password, ssl, simulationMode } = req.body || {};
+  const { engine, host, port, database, username, password, ssl, simulationMode, tenantId, companyId } = req.body || {};
+  const effectiveTenantId = String(tenantId || companyId || "00000000000001").trim();
   if (!engine || !host || !port || !database || !username) {
     return res.status(400).json({
       success: false,
@@ -3465,17 +3548,93 @@ databaseRouter.post("/database/link", async (req, res) => {
     lastMigrationAt: linkedDatabaseState.lastMigrationAt,
     totalRecordsCount: calculateTotalRecords()
   };
+  tenantDatabaseConfigs[effectiveTenantId] = {
+    ...linkedDatabaseState
+  };
+  if (databaseTables.tenants_companies.has(effectiveTenantId)) {
+    const existingComp = databaseTables.tenants_companies.get(effectiveTenantId);
+    databaseTables.tenants_companies.set(effectiveTenantId, {
+      ...existingComp,
+      databaseConfig: publicDbState()
+    });
+  }
   savePersistedConfig(linkedDatabaseState);
   logSql(
     "system_settings",
     "UPDATE",
-    `-- Conex\xE3o vinculada ao cluster ${engine.toUpperCase()} em ${host}:${port}/${database}${simulationMode ? " [MODO SIMULADO]" : " [AUTENTICADO COM SUCESSO]"}`,
+    `-- Conex\xE3o vinculada ao cluster ${engine.toUpperCase()} em ${host}:${port}/${database} (Tenant ${effectiveTenantId})${simulationMode ? " [MODO SIMULADO]" : " [AUTENTICADO COM SUCESSO]"}`,
     1
   );
   return res.json({
     success: true,
-    databaseConfig: publicDbState(),
-    message: simulationMode ? `Banco de dados "${database}" vinculado em MODO SIMULADO (em mem\xF3ria).` : `Banco de dados "${database}" (${engine.toUpperCase()}) em ${host}:${port} validado e vinculado com sucesso!`
+    tenantId: effectiveTenantId,
+    databaseConfig: {
+      ...publicDbState(),
+      tenantId: effectiveTenantId
+    },
+    message: simulationMode ? `Banco de dados "${database}" vinculado em MODO SIMULADO para o tenant ${effectiveTenantId}.` : `Banco de dados "${database}" (${engine.toUpperCase()}) em ${host}:${port} validado e vinculado ao tenant ${effectiveTenantId} com sucesso!`
+  });
+});
+databaseRouter.post(["/database/activate-tenant", "/database/activate-tenant/:tenantId"], async (req, res) => {
+  const tenantId = String(req.params.tenantId || req.body?.tenantId || "").trim();
+  const cfg = tenantDatabaseConfigs[tenantId];
+  if (cfg && cfg.host && cfg.database) {
+    linkedDatabaseState = {
+      ...linkedDatabaseState,
+      ...cfg
+    };
+    savePersistedConfig(linkedDatabaseState);
+    return res.json({
+      success: true,
+      activated: true,
+      tenantId,
+      databaseConfig: {
+        ...publicDbState(),
+        tenantId
+      },
+      message: `Banco do tenant "${tenantId}" ativado com sucesso! (${cfg.engine.toUpperCase()} em ${cfg.host})`
+    });
+  }
+  return res.json({
+    success: false,
+    activated: false,
+    tenantId,
+    message: `Nenhum banco configurado previamente para o tenant "${tenantId}".`
+  });
+});
+databaseRouter.post("/database/save-tenant-config", async (req, res) => {
+  const { tenantId, companyId, databaseConfig } = req.body || {};
+  const tId = String(tenantId || companyId || "").trim();
+  if (!tId || !databaseConfig) {
+    return res.status(400).json({
+      success: false,
+      message: "tenantId e databaseConfig s\xE3o obrigat\xF3rios."
+    });
+  }
+  tenantDatabaseConfigs[tId] = {
+    ...linkedDatabaseState,
+    ...databaseConfig
+  };
+  linkedDatabaseState = {
+    ...linkedDatabaseState,
+    ...databaseConfig
+  };
+  if (databaseTables.tenants_companies.has(tId)) {
+    const existingComp = databaseTables.tenants_companies.get(tId);
+    databaseTables.tenants_companies.set(tId, {
+      ...existingComp,
+      databaseConfig: publicDbState()
+    });
+  }
+  savePersistedConfig(linkedDatabaseState);
+  return res.json({
+    success: true,
+    tenantId: tId,
+    databaseConfig: {
+      ...publicDbState(),
+      tenantId: tId
+    },
+    message: `Configura\xE7\xE3o do banco de dados salva com sucesso no tenant "${tId}".`
   });
 });
 databaseRouter.post("/database/create-tables", async (req, res) => {
@@ -3541,7 +3700,7 @@ databaseRouter.post("/database/create-tables", async (req, res) => {
     "ALL_TABLES",
     "DDL",
     `-- Execu\xE7\xE3o DDL de cria\xE7\xE3o de ${SYSTEM_TABLES.length} tabelas no banco ${targetDb} (${targetEngine.toUpperCase()})
--- Usu\xE1rio admin@sistema.com criado`,
+-- Usu\xE1rio admin@sistema.com`,
     SYSTEM_TABLES.length
   );
   return res.json({
@@ -3553,7 +3712,7 @@ databaseRouter.post("/database/create-tables", async (req, res) => {
     tablesDetailed: SYSTEM_TABLES,
     executedAt: (/* @__PURE__ */ new Date()).toISOString(),
     scriptExecuted: ddlScript,
-    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usu\xE1rio administrador padr\xE3o foi inicializado com a senha ******.`
+    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usu\xE1rio administrador padr\xE3o foi inicializado.`
   });
 });
 databaseRouter.post("/database/insert/:table", async (req, res) => {
@@ -3836,9 +3995,25 @@ databaseRouter.get("/database/all-data", async (_req, res) => {
   for (const [key, map] of Object.entries(databaseTables)) {
     result[key] = Array.from(map.values());
   }
+  if (result.tenants_companies && Array.isArray(result.tenants_companies)) {
+    result.tenants_companies = result.tenants_companies.map((c) => {
+      const tenantCfg = tenantDatabaseConfigs[c.id];
+      if (tenantCfg) {
+        const { password: _p, tenantConfigs: _tc, ...cleanCfg } = tenantCfg;
+        return { ...c, databaseConfig: cleanCfg };
+      }
+      return c;
+    });
+  }
+  const sanitizedTenants = {};
+  for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
+    const { password: _p, tenantConfigs: _tc, ...cleanCfg } = tCfg;
+    sanitizedTenants[tId] = cleanCfg;
+  }
   return res.json({
     success: true,
-    databaseConfig: linkedDatabaseState,
+    databaseConfig: publicDbState(),
+    tenantConfigs: sanitizedTenants,
     tables: result,
     stats: {
       companies: databaseTables.tenants_companies.size,
@@ -3853,12 +4028,25 @@ databaseRouter.get("/database/all-data", async (_req, res) => {
     }
   });
 });
-databaseRouter.get("/database/status", (_req, res) => {
+databaseRouter.get("/database/status", (req, res) => {
+  const reqTenantId = req.query.tenantId ? String(req.query.tenantId).trim() : null;
+  let targetConfig = linkedDatabaseState;
+  if (reqTenantId && tenantDatabaseConfigs[reqTenantId]) {
+    targetConfig = tenantDatabaseConfigs[reqTenantId];
+  }
+  const { password: _p, ...sanitizedTarget } = targetConfig;
+  const sanitizedTenants = {};
+  for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
+    const { password: _pw, ...cleanCfg } = tCfg;
+    sanitizedTenants[tId] = cleanCfg;
+  }
   return res.json({
     databaseConfig: {
-      ...publicDbState(),
+      ...sanitizedTarget,
       totalRecordsCount: calculateTotalRecords()
     },
+    tenantConfigs: sanitizedTenants,
+    activeTenantId: reqTenantId || "00000000000001",
     availableEngines: [
       { id: "postgres", name: "PostgreSQL", defaultPort: 5432, driver: "pg" },
       { id: "mysql", name: "MySQL", defaultPort: 3306, driver: "mysql2" },
@@ -3887,7 +4075,10 @@ databaseRouter.get("/database/table-data/:table", (req, res) => {
       message: `Tabela "${tableName}" n\xE3o encontrada.`
     });
   }
-  const rows = Array.from(targetTable.values());
+  let rows = Array.from(targetTable.values());
+  if (tableName === "system_users") {
+    rows = rows.map((r) => ({ ...r, password_hash: "[PROTEGIDO]", pin: "[PROTEGIDO]" }));
+  }
   return res.json({
     success: true,
     table: tableName,
@@ -4063,11 +4254,12 @@ receitaWsRouter.get("/receitaws/:cnpj", clientRateLimit, async (req, res) => {
     let pending = inFlight.get(cnpj);
     if (!pending) {
       const slot = reserveUpstreamSlot(now);
-      if (!slot.ok) {
+      if (slot.ok === false) {
+        const waitSec = slot.seconds ?? 60;
         return sendRateLimited(
           res,
-          slot.seconds,
-          `Limite da API p\xFAblica da Receita Federal atingido (m\xE1ximo de 3 consultas por minuto). Tente novamente em ${slot.seconds} segundo(s).`
+          waitSec,
+          `Limite da API p\xFAblica da Receita Federal atingido (m\xE1ximo de 3 consultas por minuto). Tente novamente em ${waitSec} segundo(s).`
         );
       }
       pending = fetchFromReceitaWs(cnpj).finally(() => inFlight.delete(cnpj));

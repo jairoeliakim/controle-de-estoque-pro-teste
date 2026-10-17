@@ -371,7 +371,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_access_key ON invoices_history(tenant_id
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USUÁRIO ADMINISTRADOR PADRÃO
--- Senha Inicial de Primeiro Acesso: ******
+-- Senha inicial de primeiro acesso: definida pelo sistema (armazenada apenas como hash)
 -- ==============================================================================
 INSERT INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
 VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', TRUE)
@@ -672,7 +672,7 @@ CREATE TABLE IF NOT EXISTS invoices_history (
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USUÁRIO ADMINISTRADOR PADRÃO
--- Senha Inicial de Primeiro Acesso: ******
+-- Senha inicial de primeiro acesso: definida pelo sistema (armazenada apenas como hash)
 -- ==============================================================================
 INSERT IGNORE INTO tenants_companies (id, name, trade_name, cnpj, pais_origem, tipo_documento, documento_identificador, city, state, phone, email, is_active)
 VALUES ('00000000000001', 'CEC Conecta', 'CEC', '00.000.000/0000-00', 'BR', 'CNPJ', '00000000000001', 'Patrocinio', 'MG', '(34)99947-2865', 'jairoeliakim@hotmail.com', 1);
@@ -996,7 +996,7 @@ END;
 
 -- ==============================================================================
 -- 16. CARGA INICIAL: EMPRESA MATRIZ & USUÁRIO ADMINISTRADOR PADRÃO
--- Senha Inicial de Primeiro Acesso: ******
+-- Senha inicial de primeiro acesso: definida pelo sistema (armazenada apenas como hash)
 -- ==============================================================================
 IF NOT EXISTS (SELECT 1 FROM dbo.tenants_companies WHERE id = '00000000000001')
 BEGIN

@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { AuthUser, Company, UserRole } from '../types';
 import { formatCNPJ, cleanCNPJ, toTenantId } from '../utils/cnpjValidator';
-import { hashPassword, verifyPassword, generateRandomPassword } from '../utils/passwordSecurity';
+import { hashPassword, verifyPassword, generateRandomPassword, pickStoredSecret } from '../utils/passwordSecurity';
 import {
   isInstallCnpj,
   verifyMasterAdmin,
@@ -231,7 +231,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     if (isAdminMode) {
       const isValidAdmin = verifyMasterAdmin(emailClean || 'admin', passClean);
       if (!isValidAdmin) {
-        setLoginError('Senha incorreta para o Super Administrador. (Padrão inicial configurado: ******)');
+        setLoginError('Senha incorreta para o Super Administrador.');
         return;
       }
 
@@ -269,7 +269,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       }
 
       // Validação de senha criptografada via SHA-256 com salt
-      const isPassValid = verifyPassword(passClean, found.password_hash || found.pin);
+      const isPassValid = verifyPassword(passClean, pickStoredSecret(found.password_hash, found.pin));
       if (!isPassValid) {
         setLoginError('Senha ou PIN incorreto para este colaborador. Tente novamente.');
         return;
@@ -442,7 +442,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         return;
       }
     } else if (userFound && currPass) {
-      const isCurrentValid = verifyPassword(currPass, userFound.password_hash || userFound.pin);
+      const isCurrentValid = verifyPassword(currPass, pickStoredSecret(userFound.password_hash, userFound.pin));
       if (!isCurrentValid) {
         setCpError('A senha atual informada está incorreta.');
         return;
@@ -757,6 +757,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
                     placeholder={isAdminMode ? 'admin@sistema.com' : 'ex: funcionario@saborearte.com.br'}
+                    autoComplete="off"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all font-mono"
                     required
                   />
@@ -780,7 +781,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       type={showPassword ? 'text' : 'password'}
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder={isAdminMode ? 'Senha do Administrador (******)' : 'Digite sua senha ou PIN'}
+                      placeholder={isAdminMode ? 'Senha do Administrador' : 'Digite sua senha ou PIN'}
+                      autoComplete="new-password"
                       className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all font-mono pr-10"
                       required
                     />
@@ -795,7 +797,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-slate-500">
-                      Primeiro acesso? Padrão: <code className="text-slate-400 font-mono">@dm!n2026</code>
+                      Primeiro acesso? Solicite a senha inicial ao administrador.
                     </span>
                     <button
                       type="button"
@@ -1136,7 +1138,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       <Lock className="w-3.5 h-3.5 text-amber-400" />
                       <span>Senha Atual</span>
                     </span>
-                    <span className="text-[10px] text-slate-500 font-mono">Padrão inicial: @dm!n2026</span>
+                    <span className="text-[10px] text-slate-500">Primeiro acesso: use a senha inicial informada pelo administrador</span>
                   </label>
                   <div className="relative">
                     <input
