@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { DatabaseEngine, DatabaseConnectionConfig } from '../../types';
 import { SYSTEM_TABLES, generateDatabaseScript } from '../../utils/databaseScripts';
+import { secureSession } from '../../client/storage/secureSessionStorage';
 
 interface DatabaseLinkSectionProps {
   initialConfig?: DatabaseConnectionConfig;
@@ -200,9 +201,13 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
 
     try {
       // 1. Testa a conexão com a API backend (validação TCP real caso useSim === false)
+      const dbAuthToken = await secureSession.getAccessToken();
       const response = await fetch('/api/database/test-connection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(dbAuthToken ? { Authorization: `Bearer ${dbAuthToken}` } : {}),
+        },
         body: JSON.stringify({
           engine,
           host: host.trim(),
@@ -246,7 +251,10 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
       // 2. Vincula o banco de dados no backend
       const linkRes = await fetch('/api/database/link', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(dbAuthToken ? { Authorization: `Bearer ${dbAuthToken}` } : {}),
+        },
         body: JSON.stringify({
           engine,
           host: host.trim(),
@@ -342,9 +350,13 @@ export const DatabaseLinkSection: React.FC<DatabaseLinkSectionProps> = ({
 
     try {
       // Dispara requisição para criar tabelas na API
+      const createAuthToken = await secureSession.getAccessToken();
       const reqPromise = fetch('/api/database/create-tables', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(createAuthToken ? { Authorization: `Bearer ${createAuthToken}` } : {}),
+        },
         body: JSON.stringify({
           engine,
           database: database.trim(),

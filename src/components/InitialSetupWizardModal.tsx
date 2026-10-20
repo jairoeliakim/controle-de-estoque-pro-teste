@@ -27,6 +27,7 @@ import { formatCNPJ, validateCNPJ, autoFixCNPJCheckDigits, cleanCNPJ } from '../
 import { isInstallCnpj } from '../utils/adminCredentials';
 import { syncAllDataToDatabase } from '../utils/databaseSync';
 import { lookupReceitaWsCnpj, ReceitaWSResponse } from '../services/receitaWsService';
+import { secureSession } from '../client/storage/secureSessionStorage';
 
 interface InitialSetupWizardModalProps {
   isOpen: boolean;
@@ -248,9 +249,13 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       };
 
       // 1. Testa a conexão real com o SGBD
+      const authToken = await secureSession.getAccessToken();
       const res = await fetch('/api/database/test-connection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
       const data = await readJson(res);
@@ -268,7 +273,10 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
       // 2. Vincula o banco ao sistema e ao tenant da empresa
       const linkRes = await fetch('/api/database/link', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify(payload),
       });
       const linkData = await readJson(linkRes);
@@ -325,9 +333,13 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
 
     try {
       // 1. Executa o DDL de criação de tabelas
+      const runAuthToken = await secureSession.getAccessToken();
       const runRes = await fetch('/api/database/create-tables', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(runAuthToken ? { Authorization: `Bearer ${runAuthToken}` } : {}),
+        },
         body: JSON.stringify({
           engine,
           database: database.trim(),
@@ -749,10 +761,11 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                   <Database className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div className="space-y-0.5">
                     <p className="font-bold text-emerald-100">
-                      Sincronização com o Banco de Dados Relacional (SGBD)
+                      Banco de Dados Local da Sua Empresa (opcional)
                     </p>
                     <p className="text-[11px] text-emerald-300/90 leading-relaxed">
-                      Conecte e sincronize o banco de dados oficial para provisionar as tabelas estruturais e continuar os registros do sistema com integridade referencial.
+                      Todos os dados da sua empresa já ficam salvos automaticamente em nosso servidor central. Aqui você pode, opcionalmente, vincular
+                      um banco de dados próprio (seu Supabase, seu servidor, etc.) para manter uma cópia local, só com os dados da sua empresa, sob seu controle.
                     </p>
                   </div>
                 </div>
@@ -766,7 +779,7 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
               {/* Seletor de Motor SGBD */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Selecione o Sistema Gerenciador de Banco de Dados (SGBD):
+                  Selecione o Sistema Gerenciador do SEU Banco de Dados Local:
                 </label>
                 <div className="grid grid-cols-3 gap-3">
                   {[
@@ -902,10 +915,10 @@ export const InitialSetupWizardModal: React.FC<InitialSetupWizardModalProps> = (
                 <div>
                   <h4 className="font-bold text-sm text-purple-200 flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-400" />
-                    Provisionar Tabelas e Sincronizar Registros
+                    Provisionar Tabelas no Banco Local da Empresa
                   </h4>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Gera e executa as 12 tabelas DDL oficiais com chave tenant CNPJ e sincroniza os cadastros.
+                    Cria as tabelas oficiais no seu banco local e passa a replicar, a partir de agora, os dados desta empresa também para lá (além do nosso servidor central).
                   </p>
                 </div>
 

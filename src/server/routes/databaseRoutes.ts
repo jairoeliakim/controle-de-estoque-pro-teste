@@ -7,7 +7,9 @@ import pg from 'pg';
 import mysql from 'mysql2/promise';
 import { generateDatabaseScript, SYSTEM_TABLES, DatabaseEngine } from '../../utils/databaseScripts.js';
 import { validateCNPJ, cleanCNPJ } from '../../utils/cnpjValidator.js';
-import { hashPassword } from '../../utils/passwordSecurity.js';
+import { hashPassword, isKnownHashFormat } from '../../utils/passwordSecurity.js';
+import { requireRole, belongsToTenant } from '../middleware/authMiddleware.js';
+import { INSTALL_TENANT_ID } from '../adminAuth.js';
 import { inventoryStore } from '../db/inventoryStore.js';
 
 export const databaseRouter = Router();
@@ -392,8 +394,32 @@ let linkedDatabaseState: {
   totalRecordsCount: 0,
 };
 
-// Estado em memória das configurações de banco de cada Tenant/Empresa
-let tenantDatabaseConfigs: Record<string, typeof linkedDatabaseState> = {};
+// Tipo compartilhado para qualquer alvo de conexão real (central ou de um tenant)
+type DbTargetConfig = typeof linkedDatabaseState;
+
+// Estado em memória das configurações de banco de cada Tenant/Empresa (o BANCO LOCAL
+// de cada empresa, configurado por ela mesma no assistente de instalação — guarda
+// SOMENTE os dados daquele tenant).
+let tenantDatabaseConfigs: Record<string, DbTargetConfig> = {};
+
+// Conexão CENTRAL — a nossa, única e fixa, carregada apenas de DATABASE_URL no boot.
+// Recebe os dados de TODOS os tenants e nunca é alterada por "Vincular", "Ativar banco
+// do tenant" ou "Salvar configuração do tenant" (essas rotas continuam controlando
+// apenas linkedDatabaseState, reservado para seu uso atual).
+let centralDbConfig: DbTargetConfig = {
+  engine: 'postgres',
+  host: '',
+  port: 5432,
+  database: '',
+  username: '',
+  password: '',
+  ssl: false,
+  status: 'desconectado',
+  isSimulationMode: true,
+  databaseExists: false,
+  tablesCreated: false,
+  totalRecordsCount: 0,
+};
 
 // Estado do vínculo SEM a senha (usado nas respostas da API)
 function publicDbState() {
@@ -506,11 +532,11 @@ function restoreConfigFromEnv() {
     }
 
     if (!config) return;
-    linkedDatabaseState = config;
-    tenantDatabaseConfigs[defaultTenantId] = { ...config };
-    // Também cobre o identificador padrão usado em versões anteriores do aplicativo.
-    tenantDatabaseConfigs['00000000000001'] = { ...config };
-    console.info(`[DB Env Loaded] ${config.engine.toUpperCase()} configurado por ambiente em ${config.host}:${config.port}/${config.database}`);
+    // DATABASE_URL alimenta a conexão CENTRAL (nossa, fixa, todos os tenants) — nunca
+    // o vínculo do assistente/"Ativar banco do tenant", que fica sob controle manual.
+    centralDbConfig = config;
+    void defaultTenantId; // mantido apenas para compatibilidade de leitura futura
+    console.info(`[DB Central] ${config.engine.toUpperCase()} configurado por ambiente em ${config.host}:${config.port}/${config.database} — recebe os dados de TODOS os tenants.`);
   } catch (err: any) {
     console.warn('[DB Env Warning]: configuração de banco por ambiente inválida:', err.message);
   }
@@ -553,6 +579,67 @@ const databaseTables: Record<string, Map<string, any>> = {
 };
 
 // MAPPER ROBUSTO DE DOMÍNIO -> COLUNAS SQL DO ESQUEMA DDL
+/**
+ * Busca um tenant (empresa) pelo CNPJ (aceita com ou sem máscara, numérico ou alfanumérico).
+ * Usado pelo login para resolver qual tenant_id corresponde ao CNPJ digitado.
+ */
+/**
+ * ID do tenant "dono" de uma linha, considerando que `tenants_companies`
+ * guarda o tenant no próprio `id` e as demais tabelas usam `tenant_id`.
+ */
+function ownerTenantOf(tableName: string, row: any): string | undefined {
+  if (!row) return undefined;
+  return tableName === 'tenants_companies' ? row.id : row.tenant_id;
+}
+
+/**
+ * O Super Administrador de instalação (tenant_id = INSTALL_TENANT_ID) pode operar
+ * em qualquer tenant — é o único jeito de cadastrar a PRIMEIRA empresa do zero.
+ * Qualquer outro usuário só acessa registros do seu próprio tenant.
+ */
+function canAccessTenant(req: Request, resourceTenantId?: string): boolean {
+  if (!req.user) return false;
+  if (req.user.tenant_id === INSTALL_TENANT_ID) return true;
+  return belongsToTenant(req, resourceTenantId);
+}
+
+export function findTenantByCnpj(rawCnpj: string): any | null {
+  const clean = cleanCNPJ(rawCnpj || '');
+  if (!clean) return null;
+  for (const row of databaseTables.tenants_companies.values()) {
+    if (cleanCNPJ(String(row.cnpj || '')) === clean || row.id === clean) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/**
+ * Busca um usuário por tenant_id + e-mail (case-insensitive). Usado pelo login
+ * para validar credenciais no servidor, nunca no navegador.
+ */
+/**
+ * Atualiza só o hash de senha de um usuário já existente no banco em memória —
+ * usado para migrar transparentemente hashes antigos para bcrypt no login
+ * (rehash-on-login). Não falha se o usuário não existir.
+ */
+export function updateSystemUserSecret(userId: string, newHash: string): void {
+  const row = databaseTables.system_users.get(userId);
+  if (row) {
+    databaseTables.system_users.set(userId, { ...row, password_hash: newHash });
+  }
+}
+
+export function findSystemUserForLogin(tenantId: string, email: string): any | null {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  for (const row of databaseTables.system_users.values()) {
+    if (row.tenant_id === tenantId && String(row.email || '').toLowerCase() === cleanEmail) {
+      return row;
+    }
+  }
+  return null;
+}
+
 export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant = '00000000000001'): Record<string, any> {
   const now = new Date().toISOString();
   const resolveTenant = (rawTenant: any) => {
@@ -602,9 +689,9 @@ export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant 
     case 'system_users': {
       const validPin = entity.pin && entity.pin !== '[PROTEGIDO]' && entity.pin !== '[PROTEGIDO_CRIPTOGRAFADO]' ? entity.pin : '';
       const rawSecret = String(entity.password_hash || entity.password || validPin || '@dm!n2026');
-      const secureHash = rawSecret.startsWith('sha256$') || /^[a-f0-9]{64}$/i.test(rawSecret)
-        ? rawSecret
-        : hashPassword(rawSecret);
+      // Se já é um hash reconhecido (bcrypt novo ou formatos legados), usa como está;
+      // caso contrário, trata como senha em texto puro e gera um hash bcrypt novo.
+      const secureHash = isKnownHashFormat(rawSecret) ? rawSecret : hashPassword(rawSecret);
 
       return {
         id: String(entity.id),
@@ -751,22 +838,110 @@ export function mapEntityToSqlRow(tableName: string, entity: any, defaultTenant 
         source_type: String(entity.sourceType || entity.source_type || 'chave'),
       };
 
+    case 'system_settings':
+      return {
+        id: String(entity.id),
+        tenant_id: String(entity.tenant_id || entity.companyId || defaultTenant),
+        outdated_price_policy: String(entity.outdatedPricePolicy || entity.outdated_price_policy || 'alertar'),
+        default_price_validity_days: Number(entity.defaultPriceValidityDays ?? entity.default_price_validity_days ?? 30),
+        notify_outdated_prices: Boolean(entity.notifyOutdatedPrices ?? entity.notify_outdated_prices ?? true),
+        block_orders_below_min_supplier_value: Boolean(entity.blockOrdersBelowMinSupplierValue ?? entity.block_orders_below_min_supplier_value ?? false),
+        count_days: JSON.stringify(entity.countDays || entity.count_days || ['quarta', 'domingo']),
+        count_cutoff_time: String(entity.countCutoffTime || entity.count_cutoff_time || '23:59').slice(0, 10),
+        require_supervisor_auth_for_off_days: Boolean(entity.requireSupervisorAuthForOffDays ?? entity.require_supervisor_auth_for_off_days ?? true),
+        divergence_tolerance_percent: Number(entity.divergenceTolerancePercent ?? entity.divergence_tolerance_percent ?? 3.0),
+        blind_count_mode: Boolean(entity.blindCountMode ?? entity.blind_count_mode ?? false),
+        require_individual_login: Boolean(entity.requireIndividualLogin ?? entity.require_individual_login ?? true),
+        conferente_can_view_prices: Boolean(entity.conferenteCanViewPrices ?? entity.conferente_can_view_prices ?? false),
+        allow_conferente_register_unlisted: Boolean(entity.allowConferenteRegisterUnlisted ?? entity.allow_conferente_register_unlisted ?? true),
+        target_cmv_percent: Number(entity.targetCmvPercent ?? entity.target_cmv_percent ?? 28.5),
+        whatsapp_notification: Boolean(entity.whatsappNotification ?? entity.whatsapp_notification ?? false),
+        whatsapp_phone: entity.whatsappPhone || entity.whatsapp_phone || null,
+        whatsapp_reminder_time: String(entity.whatsappReminderTime || entity.whatsapp_reminder_time || '08:00').slice(0, 10),
+        updated_by: entity.updatedBy || entity.updated_by || null,
+        updated_at: entity.updatedAt || entity.updated_at || now,
+      };
+
+    case 'supplier_quotes':
+      return {
+        id: String(entity.id),
+        tenant_id: String(entity.tenant_id || entity.companyId || defaultTenant),
+        item_id: String(entity.itemId || entity.item_id || ''),
+        supplier_id: String(entity.supplierId || entity.supplier_id || ''),
+        price: Number(entity.price ?? 0),
+        is_primary: Boolean(entity.isPrimary ?? entity.is_primary ?? false),
+        last_updated: entity.lastUpdated || entity.last_updated || now,
+      };
+
+    case 'stock_movements':
+      return {
+        id: String(entity.id),
+        tenant_id: String(entity.tenant_id || entity.companyId || defaultTenant),
+        item_id: String(entity.itemId || entity.item_id || ''),
+        user_id: entity.userId || entity.user_id || null,
+        type: ['ENTRADA', 'SAIDA', 'AJUSTE', 'PERDA'].includes(entity.type) ? entity.type : 'AJUSTE',
+        quantity: Number(entity.quantity ?? 0),
+        previous_stock: Number(entity.previousStock ?? entity.previous_stock ?? 0),
+        new_stock: Number(entity.newStock ?? entity.new_stock ?? 0),
+        reason: entity.reason || null,
+        created_at: entity.createdAt || entity.created_at || now,
+      };
+
+    case 'stock_count_entries':
+      return {
+        id: String(entity.id),
+        session_id: String(entity.sessionId || entity.session_id || ''),
+        item_id: String(entity.itemId || entity.item_id || ''),
+        counted_stock: Number(entity.countedStock ?? entity.counted_stock ?? 0),
+        previous_stock: Number(entity.previousStock ?? entity.previous_stock ?? 0),
+        expiry_date: entity.expiryDate || entity.expiry_date || null,
+        observations: entity.observations || null,
+        status: ['ok', 'baixo', 'critico', 'sobra'].includes(entity.status) ? entity.status : 'ok',
+      };
+
+    case 'unlisted_count_items':
+      return {
+        id: String(entity.id),
+        tenant_id: String(entity.tenant_id || entity.companyId || defaultTenant),
+        name: String(entity.name || 'Item não identificado'),
+        category: String(entity.category || 'outros'),
+        quantity: Number(entity.quantity ?? 0),
+        unit: String(entity.unit || 'un'),
+        expiry_date: entity.expiryDate || entity.expiry_date || null,
+        location: entity.location || null,
+        observations: entity.observations || null,
+        recorded_by: String(entity.recordedBy || entity.recorded_by || 'Sistema'),
+        recorded_at: entity.recordedAt || entity.recorded_at || now,
+        status: ['pendente', 'aprovado', 'rejeitado'].includes(entity.status) ? entity.status : 'pendente',
+        approved_by: entity.approvedBy || entity.approved_by || null,
+        approved_at: entity.approvedAt || entity.approved_at || null,
+      };
+
     default:
-      return { ...entity, id: String(entity.id || `rec_${Date.now()}`) };
+      // Nunca espalha as chaves do JSON recebido como colunas SQL (isso permitia injeção de
+      // identificador — CWE-89). Qualquer tabela sem mapeamento explícito é rejeitada.
+      throw new Error(
+        `A tabela "${tableName}" não possui mapeamento de colunas definido e não pode receber inserções diretas.`
+      );
   }
 }
 
 // Verifica se um registro existe no SGBD
-async function checkRowExistsInDb(engine: DatabaseEngine, tableName: string, id: string): Promise<boolean> {
+async function checkRowExistsInDb(
+  cfg: DbTargetConfig,
+  engine: DatabaseEngine,
+  tableName: string,
+  id: string
+): Promise<boolean> {
   try {
     if (engine === 'postgres') {
       const client = new pg.Client({
-        host: linkedDatabaseState.host,
-        port: linkedDatabaseState.port,
-        database: linkedDatabaseState.database,
-        user: linkedDatabaseState.username,
-        password: linkedDatabaseState.password || '',
-        ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+        host: cfg.host,
+        port: cfg.port,
+        database: cfg.database,
+        user: cfg.username,
+        password: cfg.password || '',
+        ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
         connectionTimeoutMillis: 3000,
       });
       await client.connect();
@@ -775,12 +950,12 @@ async function checkRowExistsInDb(engine: DatabaseEngine, tableName: string, id:
       return (res.rowCount || 0) > 0;
     } else if (engine === 'mysql') {
       const conn = await mysql.createConnection({
-        host: linkedDatabaseState.host,
-        port: linkedDatabaseState.port,
-        database: linkedDatabaseState.database,
-        user: linkedDatabaseState.username,
-        password: linkedDatabaseState.password || '',
-        ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+        host: cfg.host,
+        port: cfg.port,
+        database: cfg.database,
+        user: cfg.username,
+        password: cfg.password || '',
+        ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
         connectTimeout: 3000,
       });
       const [rows]: any = await conn.execute(`SELECT 1 FROM ${tableName} WHERE id = ? LIMIT 1;`, [id]);
@@ -789,9 +964,9 @@ async function checkRowExistsInDb(engine: DatabaseEngine, tableName: string, id:
     }
   } catch (err: any) {
     if (err?.code === 'ECONNREFUSED' || err?.code === 'ENOTFOUND' || err?.code === 'ETIMEDOUT') {
-      linkedDatabaseState.status = 'erro';
-      linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
-      savePersistedConfig(linkedDatabaseState);
+      cfg.status = 'erro';
+      cfg.errorMessage = `Banco inacessível (${cfg.host}:${cfg.port}): ${err.message}`;
+      savePersistedConfig(cfg);
     }
     return false;
   }
@@ -799,15 +974,15 @@ async function checkRowExistsInDb(engine: DatabaseEngine, tableName: string, id:
 }
 
 // Execução de DDL completa no SGBD conectado
-async function runDdlOnDatabase(engine: DatabaseEngine, script: string): Promise<boolean> {
+async function runDdlOnDatabase(cfg: DbTargetConfig, engine: DatabaseEngine, script: string): Promise<boolean> {
   if (engine === 'postgres') {
     const client = new pg.Client({
-      host: linkedDatabaseState.host,
-      port: linkedDatabaseState.port,
-      database: linkedDatabaseState.database,
-      user: linkedDatabaseState.username,
-      password: linkedDatabaseState.password || '',
-      ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+      host: cfg.host,
+      port: cfg.port,
+      database: cfg.database,
+      user: cfg.username,
+      password: cfg.password || '',
+      ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
       connectionTimeoutMillis: 10000,
     });
     try {
@@ -826,12 +1001,12 @@ async function runDdlOnDatabase(engine: DatabaseEngine, script: string): Promise
     let conn: any = null;
     try {
       conn = await mysql.createConnection({
-        host: linkedDatabaseState.host,
-        port: linkedDatabaseState.port,
-        database: linkedDatabaseState.database,
-        user: linkedDatabaseState.username,
-        password: linkedDatabaseState.password || '',
-        ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+        host: cfg.host,
+        port: cfg.port,
+        database: cfg.database,
+        user: cfg.username,
+        password: cfg.password || '',
+        ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
         multipleStatements: true,
         connectTimeout: 10000,
       });
@@ -851,11 +1026,12 @@ async function runDdlOnDatabase(engine: DatabaseEngine, script: string): Promise
 
 // Garante integridade referencial antes da inserção de registros dependentes
 async function ensureDependenciesBeforeInsert(
+  cfg: DbTargetConfig,
   engine: DatabaseEngine,
   tableName: string,
   mappedRow: Record<string, any>
 ): Promise<void> {
-  if (linkedDatabaseState.isSimulationMode || linkedDatabaseState.status !== 'conectado') {
+  if (cfg.isSimulationMode || cfg.status !== 'conectado') {
     return;
   }
 
@@ -863,7 +1039,7 @@ async function ensureDependenciesBeforeInsert(
 
   // 1. Garante que a empresa tenant existe em tenants_companies
   if (tableName !== 'tenants_companies') {
-    const companyExists = await checkRowExistsInDb(engine, 'tenants_companies', tenantId);
+    const companyExists = await checkRowExistsInDb(cfg, engine, 'tenants_companies', tenantId);
     if (!companyExists) {
       const defaultCompany = {
         id: tenantId,
@@ -881,7 +1057,7 @@ async function ensureDependenciesBeforeInsert(
         created_at: '2026-01-01T08:00:00.000Z',
         updated_at: new Date().toISOString(),
       };
-      await executeRawUpsertDirect(engine, 'tenants_companies', defaultCompany);
+      await executeRawUpsertDirect(cfg, engine, 'tenants_companies', defaultCompany);
     }
   }
 
@@ -898,7 +1074,7 @@ async function ensureDependenciesBeforeInsert(
     // 2.1 Garante que a categoria existe em categories
     if (mappedRow.category_id) {
       try {
-        const catExists = await checkRowExistsInDb(engine, 'categories', mappedRow.category_id);
+        const catExists = await checkRowExistsInDb(cfg, engine, 'categories', mappedRow.category_id);
         if (!catExists) {
           const catRow = {
             id: mappedRow.category_id,
@@ -907,7 +1083,7 @@ async function ensureDependenciesBeforeInsert(
             description: `Categoria de ${mappedRow.category || 'Insumos'}`,
             created_at: new Date().toISOString(),
           };
-          await executeRawUpsertDirect(engine, 'categories', catRow);
+          await executeRawUpsertDirect(cfg, engine, 'categories', catRow);
         }
       } catch {
         mappedRow.category_id = null; // Fallback seguro para evitar violação de foreign key
@@ -917,7 +1093,7 @@ async function ensureDependenciesBeforeInsert(
     // 2.2 Se primary_supplier_id fornecido, verifica se o fornecedor existe; se não, cria stub ou anula
     if (mappedRow.primary_supplier_id) {
       try {
-        const supExists = await checkRowExistsInDb(engine, 'suppliers', mappedRow.primary_supplier_id);
+        const supExists = await checkRowExistsInDb(cfg, engine, 'suppliers', mappedRow.primary_supplier_id);
         if (!supExists) {
           const supFromCache = databaseTables.suppliers.get(mappedRow.primary_supplier_id);
           const stubSup = {
@@ -930,7 +1106,7 @@ async function ensureDependenciesBeforeInsert(
             email: supFromCache?.email || 'contato@fornecedor.com',
             created_at: new Date().toISOString(),
           };
-          await executeRawUpsertDirect(engine, 'suppliers', stubSup);
+          await executeRawUpsertDirect(cfg, engine, 'suppliers', stubSup);
         }
       } catch {
         mappedRow.primary_supplier_id = null; // Fallback seguro
@@ -941,6 +1117,7 @@ async function ensureDependenciesBeforeInsert(
 
 // Execução direta de Upsert sem recursão
 async function executeRawUpsertDirect(
+  cfg: DbTargetConfig,
   engine: DatabaseEngine,
   tableName: string,
   row: Record<string, any>
@@ -955,12 +1132,12 @@ async function executeRawUpsertDirect(
     const sql = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON CONFLICT (id) DO UPDATE SET ${updateClause};`;
 
     const client = new pg.Client({
-      host: linkedDatabaseState.host,
-      port: linkedDatabaseState.port,
-      database: linkedDatabaseState.database,
-      user: linkedDatabaseState.username,
-      password: linkedDatabaseState.password || '',
-      ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+      host: cfg.host,
+      port: cfg.port,
+      database: cfg.database,
+      user: cfg.username,
+      password: cfg.password || '',
+      ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
       connectionTimeoutMillis: 5000,
     });
     try {
@@ -969,9 +1146,9 @@ async function executeRawUpsertDirect(
       await client.end();
     } catch (err: any) {
       if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-        linkedDatabaseState.status = 'erro';
-        linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
-        savePersistedConfig(linkedDatabaseState);
+        cfg.status = 'erro';
+        cfg.errorMessage = `Banco inacessível (${cfg.host}:${cfg.port}): ${err.message}`;
+        savePersistedConfig(cfg);
       }
       console.warn(`[Raw Upsert Postgres Error on ${tableName}]:`, err.message);
     }
@@ -983,21 +1160,21 @@ async function executeRawUpsertDirect(
 
     try {
       const conn = await mysql.createConnection({
-        host: linkedDatabaseState.host,
-        port: linkedDatabaseState.port,
-        database: linkedDatabaseState.database,
-        user: linkedDatabaseState.username,
-        password: linkedDatabaseState.password || '',
-        ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+        host: cfg.host,
+        port: cfg.port,
+        database: cfg.database,
+        user: cfg.username,
+        password: cfg.password || '',
+        ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
         connectTimeout: 5000,
       });
       await conn.execute(sql, values);
       await conn.end();
     } catch (err: any) {
       if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-        linkedDatabaseState.status = 'erro';
-        linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
-        savePersistedConfig(linkedDatabaseState);
+        cfg.status = 'erro';
+        cfg.errorMessage = `Banco inacessível (${cfg.host}:${cfg.port}): ${err.message}`;
+        savePersistedConfig(cfg);
       }
       console.warn(`[Raw Upsert MySQL Error on ${tableName}]:`, err.message);
     }
@@ -1006,14 +1183,15 @@ async function executeRawUpsertDirect(
 
 // EXECUÇÃO REAL DE UPSERT / INSERT NO SGBD CONECTADO (PostgreSQL ou MySQL)
 async function executeRealSqlUpsert(
+  cfg: DbTargetConfig,
   engine: DatabaseEngine,
   tableName: string,
   mappedRow: Record<string, any>
 ): Promise<{ success: boolean; sqlExecuted: string; error?: string }> {
   // Executa validação de dependências antes de computar chaves e valores
-  if (!linkedDatabaseState.isSimulationMode && linkedDatabaseState.status === 'conectado') {
+  if (!cfg.isSimulationMode && cfg.status === 'conectado') {
     try {
-      await ensureDependenciesBeforeInsert(engine, tableName, mappedRow);
+      await ensureDependenciesBeforeInsert(cfg, engine, tableName, mappedRow);
     } catch (depErr: any) {
       console.warn(`[Dependencies check warning on ${tableName}]:`, depErr.message);
     }
@@ -1033,15 +1211,15 @@ async function executeRealSqlUpsert(
     // Visualização da query interpolada para auditoria
     const debugSql = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${values.map((v) => (v === null ? 'NULL' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : `'${String(v).replace(/'/g, "''")}'`)).join(', ')}) ON CONFLICT (id) DO UPDATE SET ${updateClause};`;
 
-    if (!linkedDatabaseState.isSimulationMode && linkedDatabaseState.status === 'conectado') {
+    if (!cfg.isSimulationMode && cfg.status === 'conectado') {
       try {
         const client = new pg.Client({
-          host: linkedDatabaseState.host,
-          port: linkedDatabaseState.port,
-          database: linkedDatabaseState.database,
-          user: linkedDatabaseState.username,
-          password: linkedDatabaseState.password || '',
-          ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+          host: cfg.host,
+          port: cfg.port,
+          database: cfg.database,
+          user: cfg.username,
+          password: cfg.password || '',
+          ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
           connectionTimeoutMillis: 5000,
         });
         await client.connect();
@@ -1052,11 +1230,11 @@ async function executeRealSqlUpsert(
           // Se a tabela não existir (42P01), roda DDL e retenta!
           if (firstErr.code === '42P01') {
             console.info(`[Auto-Create Tables] Tabela "${tableName}" inexistente. Criando esquema DDL no PostgreSQL...`);
-            const ddl = generateDatabaseScript('postgres', linkedDatabaseState.database);
+            const ddl = generateDatabaseScript('postgres', cfg.database);
             await client.query(ddl);
             // Retenta a inserção após criar a estrutura
             await client.query(sql, values);
-            linkedDatabaseState.tablesCreated = true;
+            cfg.tablesCreated = true;
           } else {
             throw firstErr;
           }
@@ -1067,9 +1245,9 @@ async function executeRealSqlUpsert(
       } catch (err: any) {
         console.warn(`[Postgres INSERT fallback on ${tableName}]: ${err.message}`);
         if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-          linkedDatabaseState.status = 'erro';
-          linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
-          savePersistedConfig(linkedDatabaseState);
+          cfg.status = 'erro';
+          cfg.errorMessage = `Banco inacessível (${cfg.host}:${cfg.port}): ${err.message}`;
+          savePersistedConfig(cfg);
         }
         return { success: false, sqlExecuted: debugSql, error: err.message };
       }
@@ -1085,15 +1263,15 @@ async function executeRealSqlUpsert(
     const sql = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateClause};`;
     const debugSql = `INSERT INTO ${tableName} (${keys.join(', ')}) VALUES (${values.map((v) => (v === null ? 'NULL' : typeof v === 'number' || typeof v === 'boolean' ? String(v) : `'${String(v).replace(/'/g, "''")}'`)).join(', ')}) ON DUPLICATE KEY UPDATE ${updateClause};`;
 
-    if (!linkedDatabaseState.isSimulationMode && linkedDatabaseState.status === 'conectado') {
+    if (!cfg.isSimulationMode && cfg.status === 'conectado') {
       try {
         const conn = await mysql.createConnection({
-          host: linkedDatabaseState.host,
-          port: linkedDatabaseState.port,
-          database: linkedDatabaseState.database,
-          user: linkedDatabaseState.username,
-          password: linkedDatabaseState.password || '',
-          ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+          host: cfg.host,
+          port: cfg.port,
+          database: cfg.database,
+          user: cfg.username,
+          password: cfg.password || '',
+          ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
           connectTimeout: 5000,
         });
 
@@ -1102,10 +1280,10 @@ async function executeRealSqlUpsert(
         } catch (firstErr: any) {
           if (firstErr.code === 'ER_NO_SUCH_TABLE' || firstErr.errno === 1146) {
             console.info(`[Auto-Create Tables] Tabela "${tableName}" inexistente no MySQL. Criando esquema DDL...`);
-            const ddl = generateDatabaseScript('mysql', linkedDatabaseState.database);
+            const ddl = generateDatabaseScript('mysql', cfg.database);
             await conn.query(ddl);
             await conn.execute(sql, values);
-            linkedDatabaseState.tablesCreated = true;
+            cfg.tablesCreated = true;
           } else {
             throw firstErr;
           }
@@ -1116,9 +1294,9 @@ async function executeRealSqlUpsert(
       } catch (err: any) {
         console.warn(`[MySQL INSERT fallback on ${tableName}]: ${err.message}`);
         if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-          linkedDatabaseState.status = 'erro';
-          linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
-          savePersistedConfig(linkedDatabaseState);
+          cfg.status = 'erro';
+          cfg.errorMessage = `Banco inacessível (${cfg.host}:${cfg.port}): ${err.message}`;
+          savePersistedConfig(cfg);
         }
         return { success: false, sqlExecuted: debugSql, error: err.message };
       }
@@ -1133,22 +1311,23 @@ async function executeRealSqlUpsert(
 
 // EXECUÇÃO REAL DE DELETE NO SGBD CONECTADO
 async function executeRealSqlDelete(
+  cfg: DbTargetConfig,
   engine: DatabaseEngine,
   tableName: string,
   id: string
 ): Promise<{ success: boolean; sqlExecuted: string; error?: string }> {
   const sql = `DELETE FROM ${tableName} WHERE id = '${id}';`;
 
-  if (!linkedDatabaseState.isSimulationMode && linkedDatabaseState.status === 'conectado') {
+  if (!cfg.isSimulationMode && cfg.status === 'conectado') {
     try {
       if (engine === 'postgres') {
         const client = new pg.Client({
-          host: linkedDatabaseState.host,
-          port: linkedDatabaseState.port,
-          database: linkedDatabaseState.database,
-          user: linkedDatabaseState.username,
-          password: linkedDatabaseState.password || '',
-          ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+          host: cfg.host,
+          port: cfg.port,
+          database: cfg.database,
+          user: cfg.username,
+          password: cfg.password || '',
+          ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
           connectionTimeoutMillis: 5000,
         });
         await client.connect();
@@ -1156,12 +1335,12 @@ async function executeRealSqlDelete(
         await client.end();
       } else if (engine === 'mysql') {
         const conn = await mysql.createConnection({
-          host: linkedDatabaseState.host,
-          port: linkedDatabaseState.port,
-          database: linkedDatabaseState.database,
-          user: linkedDatabaseState.username,
-          password: linkedDatabaseState.password || '',
-          ssl: linkedDatabaseState.ssl ? { rejectUnauthorized: false } : undefined,
+          host: cfg.host,
+          port: cfg.port,
+          database: cfg.database,
+          user: cfg.username,
+          password: cfg.password || '',
+          ssl: cfg.ssl ? { rejectUnauthorized: false } : undefined,
           connectTimeout: 5000,
         });
         await conn.execute(`DELETE FROM ${tableName} WHERE id = ?;`, [id]);
@@ -1171,9 +1350,9 @@ async function executeRealSqlDelete(
     } catch (err: any) {
       console.warn(`[SQL DELETE fallback on ${tableName}]: ${err.message}`);
       if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-        linkedDatabaseState.status = 'erro';
-        linkedDatabaseState.errorMessage = `Banco inacessível (${linkedDatabaseState.host}:${linkedDatabaseState.port}): ${err.message}`;
-        savePersistedConfig(linkedDatabaseState);
+        cfg.status = 'erro';
+        cfg.errorMessage = `Banco inacessível (${cfg.host}:${cfg.port}): ${err.message}`;
+        savePersistedConfig(cfg);
       }
       return { success: false, sqlExecuted: sql, error: err.message };
     }
@@ -1226,16 +1405,18 @@ function initCleanDatabaseSeed() {
     });
   }
 
-  // 3. Usuário Administrador Oficial Padrão (******)
+  // 3. Usuário Administrador Oficial Padrão — a senha padrão de instalação é
+  // gravada como hash bcrypt, nunca em texto puro, mesmo no seed inicial.
+  const defaultAdminHash = hashPassword('@dm!n2026');
   databaseTables.system_users.set('usr-admin-01', {
     id: 'usr-admin-01',
     tenant_id: defaultTenantCnpj,
     name: 'Administrador do Sistema',
     email: 'admin@sistema.com',
-    password_hash: '@dm!n2026',
+    password_hash: defaultAdminHash,
     role: 'administrador',
     phone: '(31)99947-2865',
-    pin: '@dm!n2026',
+    pin: '[PROTEGIDO_CRIPTOGRAFADO]',
     is_active: true,
     created_at: new Date('2026-01-01').toISOString(),
   });
@@ -1245,10 +1426,10 @@ function initCleanDatabaseSeed() {
     tenant_id: defaultTenantCnpj,
     name: 'Administrador do Sistema',
     email: 'admin',
-    password_hash: '@dm!n2026',
+    password_hash: defaultAdminHash,
     role: 'administrador',
     phone: '(31)99947-2865',
-    pin: '@dm!n2026',
+    pin: '[PROTEGIDO_CRIPTOGRAFADO]',
     is_active: true,
     created_at: new Date('2026-01-01').toISOString(),
   });
@@ -1286,7 +1467,7 @@ function calculateTotalRecords(): number {
  * 1. Testar conexão com o banco de dados
  * POST /api/database/test-connection
  */
-databaseRouter.post('/database/test-connection', async (req: Request, res: Response) => {
+databaseRouter.post('/database/test-connection', requireRole('administrador'), async (req: Request, res: Response) => {
   const { engine, host, port, database, username, password, ssl, simulationMode } = req.body || {};
 
   if (!engine || !host || !port || !database || !username) {
@@ -1444,7 +1625,7 @@ databaseRouter.post('/database/test-connection', async (req: Request, res: Respo
  * 2. Vincular o banco de dados
  * POST /api/database/link
  */
-databaseRouter.post('/database/link', async (req: Request, res: Response) => {
+databaseRouter.post('/database/link', requireRole('administrador'), async (req: Request, res: Response) => {
   const { engine, host, port, database, username, password, ssl, simulationMode, tenantId, companyId } = req.body || {};
   const effectiveTenantId = String(tenantId || companyId || '00000000000001').trim();
 
@@ -1578,7 +1759,7 @@ databaseRouter.post('/database/link', async (req: Request, res: Response) => {
   * 2.1. Ativar conexão do banco de um Tenant específico
   * POST /api/database/activate-tenant/:tenantId
   */
-databaseRouter.post(['/database/activate-tenant', '/database/activate-tenant/:tenantId'], async (req: Request, res: Response) => {
+databaseRouter.post(['/database/activate-tenant', '/database/activate-tenant/:tenantId'], requireRole('administrador'), async (req: Request, res: Response) => {
   const tenantId = String(req.params.tenantId || req.body?.tenantId || '').trim();
   const cfg = tenantDatabaseConfigs[tenantId];
   if (cfg && cfg.host && cfg.database) {
@@ -1611,7 +1792,7 @@ databaseRouter.post(['/database/activate-tenant', '/database/activate-tenant/:te
   * 2.2. Salvar parâmetros de banco diretamente para um Tenant
   * POST /api/database/save-tenant-config
   */
-databaseRouter.post('/database/save-tenant-config', async (req: Request, res: Response) => {
+databaseRouter.post('/database/save-tenant-config', requireRole('administrador'), async (req: Request, res: Response) => {
   const { tenantId, companyId, databaseConfig } = req.body || {};
   const tId = String(tenantId || companyId || '').trim();
   if (!tId || !databaseConfig) {
@@ -1657,15 +1838,19 @@ databaseRouter.post('/database/save-tenant-config', async (req: Request, res: Re
  * 3. Rodar o script para criar as tabelas do sistema
  * POST /api/database/create-tables
  */
-databaseRouter.post('/database/create-tables', async (req: Request, res: Response) => {
+databaseRouter.post('/database/create-tables', requireRole('administrador'), async (req: Request, res: Response) => {
   const { engine, database } = req.body || {};
   const targetEngine: DatabaseEngine = engine || linkedDatabaseState.engine || 'postgres';
   const targetDb: string = database || linkedDatabaseState.database || 'restaurante_estoque_db';
 
-  if (linkedDatabaseState.status !== 'conectado') {
+  const wizardDbIsLinked = linkedDatabaseState.status === 'conectado';
+  const centralIsLiveForDdl = !centralDbConfig.isSimulationMode && centralDbConfig.status === 'conectado' && !!centralDbConfig.database;
+
+  // Só recusa quando NÃO há banco nenhum para provisionar (nem o do assistente, nem o central).
+  if (!wizardDbIsLinked && !centralIsLiveForDdl) {
     return res.status(400).json({
       success: false,
-      message: 'Não é possível rodar o script: o banco de dados não está conectado. Primeiro teste e vincule um servidor de banco ativo.',
+      message: 'Não é possível rodar o script: nenhum banco de dados está conectado. Primeiro teste e vincule um servidor de banco ativo.',
     });
   }
 
@@ -1673,9 +1858,9 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
   const ddlScript = generateDatabaseScript(targetEngine, targetDb);
 
   // Se estiver conectado a um banco externo real (não simulado), executa o DDL no banco real!
-  if (!linkedDatabaseState.isSimulationMode) {
+  if (wizardDbIsLinked && !linkedDatabaseState.isSimulationMode) {
     try {
-      await runDdlOnDatabase(targetEngine, ddlScript);
+      await runDdlOnDatabase(linkedDatabaseState, targetEngine, ddlScript);
     } catch (realErr: any) {
       console.warn('[DDL Error on external DB]', realErr.message);
       return res.status(500).json({
@@ -1690,49 +1875,66 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
     }
   }
 
+  // Garante que a CONEXÃO CENTRAL (nossa, fixa, recebe todos os tenants) também tenha o
+  // schema criado — independente do banco que o assistente acabou de vincular. Sem isso,
+  // o espelhamento central de cada inserção/exclusão falharia por falta de tabelas.
+  if (!centralDbConfig.isSimulationMode && centralDbConfig.status === 'conectado' && centralDbConfig.database) {
+    try {
+      const centralDdl = generateDatabaseScript(centralDbConfig.engine, centralDbConfig.database);
+      await runDdlOnDatabase(centralDbConfig, centralDbConfig.engine, centralDdl);
+      centralDbConfig.tablesCreated = true;
+    } catch (centralErr: any) {
+      console.warn('[DDL Error on CENTRAL DB]', centralErr.message);
+      // Não falha a requisição por isso: o banco do tenant já foi provisionado com sucesso.
+    }
+  }
+
   // Inicializa seed limpo padrão com admin  e categorias
   initCleanDatabaseSeed();
 
   // Sincroniza todos os registros em memória existentes para o banco externo recém-criado!
-  if (!linkedDatabaseState.isSimulationMode) {
+  if (wizardDbIsLinked && !linkedDatabaseState.isSimulationMode) {
     try {
       // 1. Empresa Matriz
       for (const comp of databaseTables.tenants_companies.values()) {
         const mapped = mapEntityToSqlRow('tenants_companies', comp);
-        await executeRealSqlUpsert(targetEngine, 'tenants_companies', mapped);
+        await executeRealSqlUpsert(linkedDatabaseState, targetEngine, 'tenants_companies', mapped);
       }
       // 2. Categorias padrão
       for (const cat of databaseTables.categories.values()) {
         const mapped = mapEntityToSqlRow('categories', cat);
-        await executeRealSqlUpsert(targetEngine, 'categories', mapped);
+        await executeRealSqlUpsert(linkedDatabaseState, targetEngine, 'categories', mapped);
       }
       // 3. Usuários (admin + colaboradores cadastrados)
       for (const user of databaseTables.system_users.values()) {
         const mapped = mapEntityToSqlRow('system_users', user);
-        await executeRealSqlUpsert(targetEngine, 'system_users', mapped);
+        await executeRealSqlUpsert(linkedDatabaseState, targetEngine, 'system_users', mapped);
       }
       // 4. Fornecedores cadastrados
       for (const sup of databaseTables.suppliers.values()) {
         const mapped = mapEntityToSqlRow('suppliers', sup);
-        await executeRealSqlUpsert(targetEngine, 'suppliers', mapped);
+        await executeRealSqlUpsert(linkedDatabaseState, targetEngine, 'suppliers', mapped);
       }
       // 5. Produtos cadastrados
       for (const prod of databaseTables.stock_items.values()) {
         const mapped = mapEntityToSqlRow('stock_items', prod);
-        await executeRealSqlUpsert(targetEngine, 'stock_items', mapped);
+        await executeRealSqlUpsert(linkedDatabaseState, targetEngine, 'stock_items', mapped);
       }
     } catch (syncErr: any) {
       console.warn('[Seed Sync to External DB Error]:', syncErr.message);
     }
   }
 
-  linkedDatabaseState.status = 'conectado';
-  linkedDatabaseState.tablesCreated = true;
-  linkedDatabaseState.tablesCount = SYSTEM_TABLES.length;
-  linkedDatabaseState.lastMigrationAt = new Date().toISOString();
-  linkedDatabaseState.totalRecordsCount = calculateTotalRecords();
-
-  savePersistedConfig(linkedDatabaseState);
+  // Só marca o vínculo do assistente como provisionado quando ele de fato existia
+  // (quando só o CENTRAL foi provisionado, linkedDatabaseState permanece como estava).
+  if (wizardDbIsLinked) {
+    linkedDatabaseState.status = 'conectado';
+    linkedDatabaseState.tablesCreated = true;
+    linkedDatabaseState.tablesCount = SYSTEM_TABLES.length;
+    linkedDatabaseState.lastMigrationAt = new Date().toISOString();
+    linkedDatabaseState.totalRecordsCount = calculateTotalRecords();
+    savePersistedConfig(linkedDatabaseState);
+  }
 
   logSql(
     'ALL_TABLES',
@@ -1750,7 +1952,11 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
     tablesDetailed: SYSTEM_TABLES,
     executedAt: new Date().toISOString(),
     scriptExecuted: ddlScript,
-    message: `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usuário administrador padrão foi inicializado.`,
+    wizardDbProvisioned: wizardDbIsLinked,
+    centralProvisioned: centralIsLiveForDdl,
+    message: wizardDbIsLinked
+      ? `Script DDL executado com sucesso! Todas as ${SYSTEM_TABLES.length} tabelas do sistema foram criadas no banco "${targetDb}". O usuário administrador padrão foi inicializado.`
+      : `Nenhum banco local foi vinculado ainda; as ${SYSTEM_TABLES.length} tabelas foram criadas apenas na conexão central.`,
   });
 });
 
@@ -1759,7 +1965,7 @@ databaseRouter.post('/database/create-tables', async (req: Request, res: Respons
  * POST /api/database/insert/:table
  * Salva no banco em memória E executa o SQL no PostgreSQL / MySQL real se conectado!
  */
-databaseRouter.post('/database/insert/:table', async (req: Request, res: Response) => {
+databaseRouter.post('/database/insert/:table', requireRole('administrador'), async (req: Request, res: Response) => {
   const tableName = req.params.table;
   const targetTable = databaseTables[tableName];
 
@@ -1783,13 +1989,39 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
   let lastExecutedSql = '';
   let realDbSynced = false;
   let realDbError: string | undefined;
+  let localDbSynced = false;
+  let localDbError: string | undefined;
 
   for (const rawItem of itemsToInsert) {
     const id = rawItem.id || `rec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const fullItem = { ...rawItem, id };
 
-    // 1. Mapeia as colunas com tipagem estrita para o DDL SQL
-    const mappedRow = mapEntityToSqlRow(tableName, fullItem, '00000000000001');
+    // 1. Mapeia as colunas com tipagem estrita para o DDL SQL (lança erro para
+    // tabelas sem mapeamento explícito — nunca aceita colunas vindas do cliente).
+    let mappedRow: Record<string, any>;
+    try {
+      mappedRow = mapEntityToSqlRow(tableName, fullItem, '00000000000001');
+    } catch (mapErr: any) {
+      return res.status(400).json({ success: false, message: mapErr.message });
+    }
+
+    // Isolamento de tenant: um administrador comum só grava dados da PRÓPRIA empresa,
+    // mesmo que o corpo da requisição informe um tenant_id/id diferente. Só o Super
+    // Administrador de instalação (tenant_id = INSTALL_TENANT_ID) pode operar entre tenants,
+    // porque é ele quem cadastra a primeira empresa do zero.
+    const isInstallAdmin = req.user?.tenant_id === INSTALL_TENANT_ID;
+    if (!isInstallAdmin) {
+      if (tableName === 'tenants_companies') {
+        if (mappedRow.id !== req.user!.tenant_id) {
+          return res.status(403).json({
+            success: false,
+            message: 'Você só pode alterar o cadastro da própria empresa.',
+          });
+        }
+      } else if ('tenant_id' in mappedRow) {
+        mappedRow.tenant_id = req.user!.tenant_id;
+      }
+    }
 
     // Validação Condicional de Empresas e Fornecedores (Globalizado)
     if (tableName === 'suppliers') {
@@ -1856,17 +2088,37 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
       });
     }
 
-    // 4. EXECUTA SQL REAL NO BANCO DE DADOS EXTERNO (Se conectado)
-    const sqlResult = await executeRealSqlUpsert(linkedDatabaseState.engine, tableName, mappedRow);
-    lastExecutedSql = sqlResult.sqlExecuted;
-    if (sqlResult.success) {
-      realDbSynced = !linkedDatabaseState.isSimulationMode && linkedDatabaseState.status === 'conectado';
-    } else {
-      realDbError = sqlResult.error;
+    // 4a. EXECUTA SQL REAL NA CONEXÃO CENTRAL (nossa, fixa, recebe TODOS os tenants)
+    const centralIsLive = !centralDbConfig.isSimulationMode && centralDbConfig.status === 'conectado';
+    if (centralIsLive) {
+      const sqlResult = await executeRealSqlUpsert(centralDbConfig, centralDbConfig.engine, tableName, mappedRow);
+      lastExecutedSql = sqlResult.sqlExecuted;
+      if (sqlResult.success) {
+        realDbSynced = true;
+      } else {
+        realDbError = sqlResult.error;
+      }
+      logSql(tableName, 'INSERT', sqlResult.sqlExecuted, 1);
     }
 
-    // 5. Registra o comando no log oficial de auditoria
-    logSql(tableName, 'INSERT', sqlResult.sqlExecuted, 1);
+    // 4b. EXECUTA SQL REAL NO BANCO LOCAL DA PRÓPRIA EMPRESA (se ela tiver configurado um),
+    // de forma independente da conexão central — guarda SOMENTE os dados deste tenant.
+    const recordTenantId = tableName === 'tenants_companies' ? mappedRow.id : mappedRow.tenant_id;
+    const tenantLocalCfg = recordTenantId ? tenantDatabaseConfigs[recordTenantId] : undefined;
+    const tenantLocalIsLive = !!tenantLocalCfg && !tenantLocalCfg.isSimulationMode && tenantLocalCfg.status === 'conectado';
+    if (tenantLocalIsLive && tenantLocalCfg) {
+      try {
+        const localResult = await executeRealSqlUpsert(tenantLocalCfg, tenantLocalCfg.engine, tableName, mappedRow);
+        if (localResult.success) {
+          localDbSynced = true;
+        } else {
+          localDbError = localResult.error;
+        }
+        if (!lastExecutedSql) lastExecutedSql = localResult.sqlExecuted;
+      } catch (localErr: any) {
+        localDbError = localErr?.message || 'Falha ao gravar no banco local da empresa.';
+      }
+    }
   }
 
   linkedDatabaseState.lastInsertedAt = new Date().toISOString();
@@ -1880,8 +2132,12 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
     totalDatabaseRecords: linkedDatabaseState.totalRecordsCount,
     lastInsertedAt: linkedDatabaseState.lastInsertedAt,
     sqlExecuted: lastExecutedSql,
+    // Conexão central (nossa, todos os tenants)
     realDbSynced,
     realDbError,
+    // Banco local da própria empresa (se configurado) — independente da central
+    localDbSynced,
+    localDbError,
     message: `Sucesso: ${insertedCount} registro(s) inserido(s) e persistido(s) na tabela "${tableName}" do banco de dados!${
       realDbSynced ? ' [Persistido no SGBD Externo]' : realDbError ? ` [Aviso: Erro no SGBD externo: ${realDbError}]` : ''
     }`,
@@ -1892,7 +2148,7 @@ databaseRouter.post('/database/insert/:table', async (req: Request, res: Respons
  * 5. EXCLUSÃO DE REGISTRO DO BANCO
  * DELETE /api/database/delete/:table/:id
  */
-databaseRouter.delete('/database/delete/:table/:id', async (req: Request, res: Response) => {
+databaseRouter.delete('/database/delete/:table/:id', requireRole('administrador'), async (req: Request, res: Response) => {
   const { table: tableName, id } = req.params;
   const targetTable = databaseTables[tableName];
 
@@ -1900,6 +2156,17 @@ databaseRouter.delete('/database/delete/:table/:id', async (req: Request, res: R
     return res.status(404).json({ success: false, message: `Tabela "${tableName}" não encontrada.` });
   }
 
+  // Confere que o registro pertence ao mesmo tenant do token antes de apagar
+  // (o Super Administrador de instalação pode apagar de qualquer tenant).
+  const existingRow = targetTable.get(id);
+  if (existingRow && !canAccessTenant(req, ownerTenantOf(tableName, existingRow))) {
+    return res.status(403).json({
+      success: false,
+      message: 'Este registro pertence a outra empresa e não pode ser removido por este usuário.',
+    });
+  }
+
+  const ownerTenantId = ownerTenantOf(tableName, existingRow);
   const existed = targetTable.delete(id);
   if (tableName === 'stock_items') {
     inventoryStore.deleteProduct(id);
@@ -1908,15 +2175,38 @@ databaseRouter.delete('/database/delete/:table/:id', async (req: Request, res: R
     inventoryStore.deleteUser(id);
   }
 
-  // Executa no SGBD real se conectado
-  const delResult = await executeRealSqlDelete(linkedDatabaseState.engine, tableName, id);
-  logSql(tableName, 'DELETE', delResult.sqlExecuted, existed ? 1 : 0);
+  // Apaga na conexão CENTRAL (nossa, fixa, todos os tenants)
+  let lastExecutedSql = '';
+  let localDbSynced = false;
+  let localDbError: string | undefined;
+  const centralIsLive = !centralDbConfig.isSimulationMode && centralDbConfig.status === 'conectado';
+  if (centralIsLive) {
+    const delResult = await executeRealSqlDelete(centralDbConfig, centralDbConfig.engine, tableName, id);
+    lastExecutedSql = delResult.sqlExecuted;
+    logSql(tableName, 'DELETE', delResult.sqlExecuted, existed ? 1 : 0);
+  }
+
+  // Apaga também no BANCO LOCAL da própria empresa (se configurado), independente da central
+  const tenantLocalCfg = ownerTenantId ? tenantDatabaseConfigs[ownerTenantId] : undefined;
+  const tenantLocalIsLive = !!tenantLocalCfg && !tenantLocalCfg.isSimulationMode && tenantLocalCfg.status === 'conectado';
+  if (tenantLocalIsLive && tenantLocalCfg) {
+    try {
+      const localResult = await executeRealSqlDelete(tenantLocalCfg, tenantLocalCfg.engine, tableName, id);
+      localDbSynced = true;
+      if (!lastExecutedSql) lastExecutedSql = localResult.sqlExecuted;
+    } catch (localErr: any) {
+      localDbError = localErr?.message || 'Falha ao apagar no banco local da empresa.';
+    }
+  }
+
   linkedDatabaseState.totalRecordsCount = calculateTotalRecords();
 
   return res.json({
     success: true,
     deleted: existed,
-    sqlExecuted: delResult.sqlExecuted,
+    sqlExecuted: lastExecutedSql,
+    localDbSynced,
+    localDbError,
     message: existed ? `Registro "${id}" removido da tabela "${tableName}".` : 'Registro não encontrado.',
   });
 });
@@ -1925,7 +2215,7 @@ databaseRouter.delete('/database/delete/:table/:id', async (req: Request, res: R
  * 6. SINCRONIZAÇÃO COMPLETA DE ENTIDADES
  * POST /api/database/sync-all
  */
-databaseRouter.post('/database/sync-all', async (req: Request, res: Response) => {
+databaseRouter.post('/database/sync-all', requireRole('administrador'), async (req: Request, res: Response) => {
   const {
     items,
     suppliers,
@@ -1945,7 +2235,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const c of companies) {
       const mapped = mapEntityToSqlRow('tenants_companies', c);
       databaseTables.tenants_companies.set(c.id, { ...c, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'tenants_companies', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'tenants_companies', mapped);
       count++;
     }
   }
@@ -1954,7 +2244,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const e of employees) {
       const mapped = mapEntityToSqlRow('system_users', e);
       databaseTables.system_users.set(e.id, { ...e, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'system_users', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'system_users', mapped);
       count++;
     }
   }
@@ -1963,7 +2253,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const s of suppliers) {
       const mapped = mapEntityToSqlRow('suppliers', s);
       databaseTables.suppliers.set(s.id, { ...s, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'suppliers', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'suppliers', mapped);
       count++;
     }
   }
@@ -1972,7 +2262,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const it of items) {
       const mapped = mapEntityToSqlRow('stock_items', it);
       databaseTables.stock_items.set(it.id, { ...it, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'stock_items', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'stock_items', mapped);
       count++;
     }
   }
@@ -1981,7 +2271,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const l of losses) {
       const mapped = mapEntityToSqlRow('loss_records', l);
       databaseTables.loss_records.set(l.id, { ...l, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'loss_records', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'loss_records', mapped);
       count++;
     }
   }
@@ -1990,7 +2280,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const cs of countSessions) {
       const mapped = mapEntityToSqlRow('stock_count_sessions', cs);
       databaseTables.stock_count_sessions.set(cs.id, { ...cs, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'stock_count_sessions', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'stock_count_sessions', mapped);
       count++;
     }
   }
@@ -1999,7 +2289,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const o of orders) {
       const mapped = mapEntityToSqlRow('purchase_orders', o);
       databaseTables.purchase_orders.set(o.id, { ...o, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'purchase_orders', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'purchase_orders', mapped);
       count++;
     }
   }
@@ -2020,7 +2310,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
     for (const inv of invoices) {
       const mapped = mapEntityToSqlRow('invoices_history', inv);
       databaseTables.invoices_history.set(inv.id, { ...inv, ...mapped });
-      await executeRealSqlUpsert(linkedDatabaseState.engine, 'invoices_history', mapped);
+      await executeRealSqlUpsert(linkedDatabaseState, linkedDatabaseState.engine, 'invoices_history', mapped);
       count++;
     }
   }
@@ -2043,7 +2333,7 @@ databaseRouter.post('/database/sync-all', async (req: Request, res: Response) =>
  * GET /api/database/all-data
  * Se o banco externo estiver conectado, busca os dados reais das tabelas!
  */
-databaseRouter.get('/database/all-data', async (_req: Request, res: Response) => {
+databaseRouter.get('/database/all-data', async (req: Request, res: Response) => {
   // Se o banco externo estiver conectado e não for simulado, carrega os dados reais do SGBD!
   if (!linkedDatabaseState.isSimulationMode && linkedDatabaseState.status === 'conectado') {
     try {
@@ -2096,9 +2386,13 @@ databaseRouter.get('/database/all-data', async (_req: Request, res: Response) =>
     }
   }
 
+  const isInstallAdmin = req.user?.tenant_id === INSTALL_TENANT_ID;
   const result: Record<string, any[]> = {};
   for (const [key, map] of Object.entries(databaseTables)) {
-    result[key] = Array.from(map.values());
+    const rows = Array.from(map.values());
+    // Isola por tenant: cada usuário só recebe os dados da própria empresa.
+    // O Super Administrador de instalação vê todos os tenants (necessário para o setup inicial).
+    result[key] = isInstallAdmin ? rows : rows.filter((r) => ownerTenantOf(key, r) === req.user!.tenant_id);
   }
 
   // Anexa a configuração de banco correspondente em cada empresa tenant
@@ -2151,12 +2445,20 @@ databaseRouter.get('/database/status', (req: Request, res: Response) => {
   }
 
   const { password: _p, ...sanitizedTarget } = targetConfig;
+  const { password: _pc, ...sanitizedCentral } = centralDbConfig;
 
-  // Sanitiza mapa de tenants
-  const sanitizedTenants: Record<string, any> = {};
-  for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
-    const { password: _pw, ...cleanCfg } = tCfg;
-    sanitizedTenants[tId] = cleanCfg;
+  // O banco local de cada empresa é visível só para ela mesma (e para o Super
+  // Administrador de instalação, que enxerga todos durante o setup).
+  const isInstallAdmin = req.user?.tenant_id === INSTALL_TENANT_ID;
+  let sanitizedTenants: Record<string, any> = {};
+  if (isInstallAdmin) {
+    for (const [tId, tCfg] of Object.entries(tenantDatabaseConfigs)) {
+      const { password: _pw, ...cleanCfg } = tCfg;
+      sanitizedTenants[tId] = cleanCfg;
+    }
+  } else if (req.user?.tenant_id && tenantDatabaseConfigs[req.user.tenant_id]) {
+    const { password: _pw, ...cleanCfg } = tenantDatabaseConfigs[req.user.tenant_id];
+    sanitizedTenants = { [req.user.tenant_id]: cleanCfg };
   }
 
   return res.json({
@@ -2164,6 +2466,9 @@ databaseRouter.get('/database/status', (req: Request, res: Response) => {
       ...sanitizedTarget,
       totalRecordsCount: calculateTotalRecords(),
     },
+    // Conexão CENTRAL — nossa, única, fixa (vinda de DATABASE_URL), recebe todos os tenants.
+    central: sanitizedCentral,
+    // Banco(s) LOCAL(IS) de cada empresa — só o próprio, exceto para o Super Administrador.
     tenantConfigs: sanitizedTenants,
     activeTenantId: reqTenantId || '00000000000001',
     availableEngines: [
@@ -2182,7 +2487,7 @@ databaseRouter.get('/database/status', (req: Request, res: Response) => {
       stock_count_sessions: databaseTables.stock_count_sessions.size,
       purchase_orders: databaseTables.purchase_orders.size,
     },
-    recentLogs: sqlExecutionLogs.slice(0, 15),
+    recentLogs: isInstallAdmin ? sqlExecutionLogs.slice(0, 15) : [],
   });
 });
 
@@ -2201,7 +2506,11 @@ databaseRouter.get('/database/table-data/:table', (req: Request, res: Response) 
     });
   }
 
+  const isInstallAdmin = req.user?.tenant_id === INSTALL_TENANT_ID;
   let rows = Array.from(targetTable.values());
+  if (!isInstallAdmin) {
+    rows = rows.filter((r) => ownerTenantOf(tableName, r) === req.user!.tenant_id);
+  }
   if (tableName === 'system_users') {
     // Nunca expõe senha/PIN (nem o padrão inicial) pela API de visualização
     rows = rows.map((r: any) => ({ ...r, password_hash: '[PROTEGIDO]', pin: '[PROTEGIDO]' }));
@@ -2218,7 +2527,7 @@ databaseRouter.get('/database/table-data/:table', (req: Request, res: Response) 
  * 10. Obter Logs de Execução SQL em tempo real
  * GET /api/database/sql-logs
  */
-databaseRouter.get('/database/sql-logs', (_req: Request, res: Response) => {
+databaseRouter.get('/database/sql-logs', requireRole('administrador'), (_req: Request, res: Response) => {
   return res.json({
     success: true,
     engine: linkedDatabaseState.engine,
@@ -2232,7 +2541,7 @@ databaseRouter.get('/database/sql-logs', (_req: Request, res: Response) => {
  * 11. Baixar/Consultar Script DDL formatado
  * GET /api/database/script/:engine
  */
-databaseRouter.get('/database/script/:engine', (req: Request, res: Response) => {
+databaseRouter.get('/database/script/:engine', requireRole('administrador'), (req: Request, res: Response) => {
   const rawEngine = (req.params.engine || 'postgres').toLowerCase() as DatabaseEngine;
   const engine: DatabaseEngine = ['mysql', 'postgres', 'sqlserver'].includes(rawEngine) ? rawEngine : 'postgres';
   const dbName = (req.query.database as string) || 'restaurante_estoque_db';

@@ -1,4 +1,6 @@
-export type UserRole = 'admin' | 'operador';
+// Unificado com os papéis reais do sistema (ver src/types.ts). Mantém 'admin' e
+// 'operador' como aliases para não quebrar integrações externas que já usem esses nomes.
+export type UserRole = 'administrador' | 'gerente' | 'compras' | 'conferente' | 'admin' | 'operador';
 
 export type StockMovementType = 'ENTRADA' | 'SAIDA' | 'AJUSTE';
 
