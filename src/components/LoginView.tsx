@@ -30,6 +30,7 @@ import {
 import { AuthUser, Company, UserRole } from '../types';
 import { formatCNPJ, cleanCNPJ, toTenantId } from '../utils/cnpjValidator';
 import { hashPassword, verifyPassword, generateRandomPassword, pickStoredSecret } from '../utils/passwordSecurity';
+import { secureSession } from '../client/storage/secureSessionStorage';
 import {
   isInstallCnpj,
   verifyMasterAdmin,
@@ -74,6 +75,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [isSubmittingLogin, setIsSubmittingLogin] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -209,7 +211,29 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   // Login submission
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  /**
+   * Chama o login REAL no servidor. A checagem local (verifyMasterAdmin/verifyPassword)
+   * serve só para dar um erro rápido; quem decide de verdade é sempre o servidor —
+   * se ele recusar, o login não acontece, mesmo que a checagem local tenha passado.
+   */
+  async function loginOnServer(body: { mode: 'master-admin' | 'employee'; password: string; email?: string; cnpj?: string }): Promise<boolean> {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.access_token) return false;
+      await secureSession.saveTokens({ accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in || 86400) * 1000 });
+      return true;
+    } catch {
+      setLoginError('Não foi possível confirmar o login com o servidor. Verifique sua conexão e tente novamente.');
+      return false;
+    }
+  }
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
@@ -227,84 +251,89 @@ export const LoginView: React.FC<LoginViewProps> = ({
       return;
     }
 
-    // 2. CASO CNPJ 00000000000000 (Acesso Administrador Mestre fora do banco)
-    if (isAdminMode) {
-      const isValidAdmin = verifyMasterAdmin(emailClean || 'admin', passClean);
-      if (!isValidAdmin) {
-        setLoginError('Senha incorreta para o Super Administrador.');
+    setIsSubmittingLogin(true);
+    try {
+      // 2. CASO CNPJ 00000000000000 (Acesso Administrador Mestre fora do banco)
+      if (isAdminMode) {
+        const serverOk = await loginOnServer({ mode: 'master-admin', password: passClean, email: emailClean || 'admin' });
+        if (!serverOk) {
+          setLoginError((prev) => prev ?? 'Senha incorreta para o Super Administrador.');
+          return;
+        }
+
+        const masterAdmin = createMasterAdminAuthUser();
+        // O segundo parâmetro true sinaliza que o Administrador fará o cadastro inicial da empresa
+        onLogin(masterAdmin, true);
         return;
       }
 
-      const masterAdmin = createMasterAdminAuthUser();
-      // O segundo parâmetro true sinaliza que o Administrador fará o cadastro inicial da empresa
-      onLogin(masterAdmin, true);
-      return;
-    }
-
-    // 3. CASO EMPRESA NORMAL
-    if (!matchedCompany) {
-      setLoginError(
-        'Nenhuma empresa localizada com o CNPJ informado. Se este for o primeiro setup, informe o CNPJ 00.000.000/0000-00 para acessar como Administrador.'
-      );
-      return;
-    }
-
-    if (!emailClean) {
-      setLoginError('Informe o e-mail ou nome do colaborador para login.');
-      return;
-    }
-
-    // Busca o usuário na empresa identificada
-    const found = companyUsers.find(
-      (u) => u.email.toLowerCase() === emailClean || u.name.toLowerCase() === emailClean
-    );
-
-    if (found) {
-      // 1. Verificação de status bloqueado / aguardando aprovação de gerente
-      if (found.status === 'bloqueado') {
+      // 3. CASO EMPRESA NORMAL
+      if (!matchedCompany) {
         setLoginError(
-          `Acesso Bloqueado: O colaborador "${found.name}" ${found.matricula ? `(Matrícula: ${found.matricula}) ` : ''}está com o acesso bloqueado aguardando aprovação de um gerente da empresa para liberação.`
+          'Nenhuma empresa localizada com o CNPJ informado. Se este for o primeiro setup, informe o CNPJ 00.000.000/0000-00 para acessar como Administrador.'
         );
         return;
       }
 
-      // Validação de senha criptografada via SHA-256 com salt
-      const isPassValid = verifyPassword(passClean, pickStoredSecret(found.password_hash, found.pin));
-      if (!isPassValid) {
-        setLoginError('Senha ou PIN incorreto para este colaborador. Tente novamente.');
+      if (!emailClean) {
+        setLoginError('Informe o e-mail ou nome do colaborador para login.');
         return;
       }
 
-      onLogin({
-        ...found,
-        companyId: matchedCompany.id,
-        companyName: matchedCompany.name,
-        lastLogin: new Date().toISOString(),
-      });
-      return;
-    }
+      // Busca o usuário na empresa identificada
+      const found = companyUsers.find(
+        (u) => u.email.toLowerCase() === emailClean || u.name.toLowerCase() === emailClean
+      );
 
-    // Permite login de administrador mesmo em CNPJ específico
-    if (emailClean === 'admin' || emailClean === 'admin@sistema.com') {
-      if (verifyMasterAdmin(emailClean, passClean)) {
-        const adminUser: AuthUser = {
-          id: 'usr-admin-01',
-          name: 'Administrador do Sistema',
-          email: 'admin@sistema.com',
-          role: 'administrador',
+      if (found) {
+        // 1. Verificação de status bloqueado / aguardando aprovação de gerente
+        if (found.status === 'bloqueado') {
+          setLoginError(
+            `Acesso Bloqueado: O colaborador "${found.name}" ${found.matricula ? `(Matrícula: ${found.matricula}) ` : ''}está com o acesso bloqueado aguardando aprovação de um gerente da empresa para liberação.`
+          );
+          return;
+        }
+
+        const serverOk = await loginOnServer({ mode: 'employee', cnpj: cleanCnpj, email: found.email, password: passClean });
+        if (!serverOk) {
+          setLoginError((prev) => prev ?? 'Senha ou PIN incorreto para este colaborador. Tente novamente.');
+          return;
+        }
+
+        onLogin({
+          ...found,
           companyId: matchedCompany.id,
           companyName: matchedCompany.name,
-          pin: '[PROTEGIDO]',
           lastLogin: new Date().toISOString(),
-        };
-        onLogin(adminUser, false);
+        });
         return;
       }
-    }
 
-    setLoginError(
-      `Colaborador "${loginEmail}" não encontrado na empresa ${matchedCompany.tradeName || matchedCompany.name}. Verifique o e-mail informado.`
-    );
+      // Permite login de administrador mesmo em CNPJ específico
+      if (emailClean === 'admin' || emailClean === 'admin@sistema.com') {
+        const serverOk = await loginOnServer({ mode: 'master-admin', password: passClean, email: emailClean });
+        if (serverOk) {
+          const adminUser: AuthUser = {
+            id: 'usr-admin-01',
+            name: 'Administrador do Sistema',
+            email: 'admin@sistema.com',
+            role: 'administrador',
+            companyId: matchedCompany.id,
+            companyName: matchedCompany.name,
+            pin: '[PROTEGIDO]',
+            lastLogin: new Date().toISOString(),
+          };
+          onLogin(adminUser, false);
+          return;
+        }
+      }
+
+      setLoginError(
+        `Colaborador "${loginEmail}" não encontrado na empresa ${matchedCompany.tradeName || matchedCompany.name}. Verifique o e-mail informado.`
+      );
+    } finally {
+      setIsSubmittingLogin(false);
+    }
   };
 
   // Register form submission (Regra: Apenas conferente e setor de compras, criados como bloqueados aguardando aprovação de gerente)

@@ -103,19 +103,44 @@ export function sha256(ascii: string): string {
   return result;
 }
 
+import bcrypt from 'bcryptjs';
+
+// Mantido só para VERIFICAR hashes antigos (migração). Hashes novos nunca usam
+// salt fixo — veja hashPassword() abaixo, que usa bcrypt com salt aleatório.
 export const DEFAULT_SALT = 'ce_cmv_salt_2026';
 
-/**
- * Gera hash criptográfico da senha no formato `sha256$<salt>$<hash>`
- */
-export function hashPassword(plainText: string, salt: string = DEFAULT_SALT): string {
-  if (!plainText) return '';
-  const calculated = sha256(`${salt}:${plainText}`);
-  return `sha256$${salt}$${calculated}`;
+// Custo do bcrypt: 10 rounds é um equilíbrio adequado entre segurança e
+// velocidade (inclusive quando o hash roda no navegador, de forma síncrona).
+const BCRYPT_COST = 10;
+
+/** Reconhece um hash bcrypt válido ($2a$/$2b$/$2y$...). */
+export function isBcryptHash(value?: string | null): boolean {
+  return !!value && /^\$2[aby]\$\d{2}\$/.test(value.trim());
+}
+
+/** Reconhece qualquer formato de hash que o sistema já gravou (novo ou legado). */
+export function isKnownHashFormat(value?: string | null): boolean {
+  if (!value) return false;
+  const t = value.trim();
+  return isBcryptHash(t) || t.startsWith('sha256$') || /^[a-f0-9]{64}$/i.test(t);
 }
 
 /**
- * Verifica se a senha informada confere com o hash ou valor protegido gravado
+ * Gera o hash da senha com bcrypt (salt aleatório por chamada, embutido no
+ * próprio hash — nunca reaproveita o mesmo salt entre usuários).
+ */
+export function hashPassword(plainText: string): string {
+  if (!plainText) return '';
+  return bcrypt.hashSync(plainText, BCRYPT_COST);
+}
+
+/**
+ * Verifica se a senha informada confere com o hash gravado. Aceita, nesta ordem:
+ * 1. bcrypt (formato atual, com salt aleatório por usuário);
+ * 2. sha256$<salt>$<hash> (formato legado, salt estático — mantido só para
+ *    não bloquear contas antigas; veja rehashIfLegacy() para migrá-las);
+ * 3. hex simples de 64 caracteres (formato ainda mais antigo);
+ * 4. texto plano legado, como último recurso.
  */
 export function verifyPassword(inputPassword: string, storedSecret?: string): boolean {
   if (!inputPassword || !storedSecret) return false;
@@ -123,7 +148,16 @@ export function verifyPassword(inputPassword: string, storedSecret?: string): bo
   const trimmedInput = inputPassword.trim();
   const trimmedStored = storedSecret.trim();
 
-  // 1. Formato moderno saltado: sha256$<salt>$<hash>
+  // 1. bcrypt
+  if (isBcryptHash(trimmedStored)) {
+    try {
+      return bcrypt.compareSync(trimmedInput, trimmedStored);
+    } catch {
+      return false;
+    }
+  }
+
+  // 2. Formato legado saltado: sha256$<salt>$<hash>
   if (trimmedStored.startsWith('sha256$')) {
     const parts = trimmedStored.split('$');
     if (parts.length >= 3) {
@@ -134,7 +168,7 @@ export function verifyPassword(inputPassword: string, storedSecret?: string): bo
     }
   }
 
-  // 2. Formato hex simples (64 caracteres)
+  // 3. Formato hex simples (64 caracteres)
   if (/^[a-f0-9]{64}$/i.test(trimmedStored)) {
     const withSalt = sha256(`${DEFAULT_SALT}:${trimmedInput}`);
     const withoutSalt = sha256(trimmedInput);
@@ -144,8 +178,20 @@ export function verifyPassword(inputPassword: string, storedSecret?: string): bo
     );
   }
 
-  // 3. Fallback para senha em texto plano legado (permitindo migração transparente)
+  // 4. Fallback para senha em texto plano legado (permitindo migração transparente)
   return trimmedInput === trimmedStored;
+}
+
+/**
+ * Se a senha informada confere mas o hash gravado NÃO é bcrypt (formato legado),
+ * devolve um novo hash bcrypt para o chamador persistir — migração transparente
+ * no primeiro login bem-sucedido após a atualização. Devolve undefined quando
+ * não há nada para migrar (hash já é bcrypt, ou a senha não confere).
+ */
+export function rehashIfLegacy(inputPassword: string, storedSecret?: string): string | undefined {
+  if (isBcryptHash(storedSecret)) return undefined;
+  if (!verifyPassword(inputPassword, storedSecret)) return undefined;
+  return hashPassword(inputPassword);
 }
 
 /**

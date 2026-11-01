@@ -14,13 +14,20 @@
  * - Parametrização Sistêmica (system_settings)
  */
 
+import { secureSession } from '../client/storage/secureSessionStorage.js';
+
+/** Monta os cabeçalhos com o token de sessão, quando existir (rotas de banco exigem autenticação). */
+async function authHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  const token = await secureSession.getAccessToken();
+  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+}
+
+
 export async function syncEntityToDatabase(table: string, data: any): Promise<boolean> {
   try {
     const response = await fetch(`/api/database/insert/${table}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(data),
     });
 
@@ -60,6 +67,7 @@ export async function deleteEntityFromDatabase(table: string, id: string): Promi
   try {
     const response = await fetch(`/api/database/delete/${table}/${id}`, {
       method: 'DELETE',
+      headers: await authHeaders(),
     });
 
     if (response.ok) {
@@ -78,7 +86,7 @@ export async function deleteEntityFromDatabase(table: string, id: string): Promi
 
 export async function fetchAllDatabaseData(): Promise<any | null> {
   try {
-    const response = await fetch('/api/database/all-data');
+    const response = await fetch('/api/database/all-data', { headers: await authHeaders() });
     if (response.ok) {
       const data = await response.json();
       return data;
@@ -93,9 +101,7 @@ export async function syncAllDataToDatabase(payload: any): Promise<{ success: bo
   try {
     const response = await fetch('/api/database/sync-all', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
 

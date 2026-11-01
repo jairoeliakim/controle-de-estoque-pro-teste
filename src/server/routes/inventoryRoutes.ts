@@ -219,7 +219,7 @@ inventoryRouter.get('/categories', requireAuth, (req: Request, res: Response) =>
 // ==============================================================================
 // 7. STATUS E DIAGNÓSTICO DO BANCO DE DADOS (EXCLUSIVO ADMINISTRADOR)
 // ==============================================================================
-inventoryRouter.get('/admin/db-status', requireAuth, requireRole('admin'), (req: Request, res: Response) => {
+inventoryRouter.get('/admin/db-status', requireAuth, requireRole('administrador'), (req: Request, res: Response) => {
   const tenantId = req.user!.tenant_id;
   res.json({
     success: true,

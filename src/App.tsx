@@ -72,6 +72,7 @@ import { BillingSimulationDrawer } from './components/billing/BillingSimulationD
 import { OnlineInventoryApiWorkbench } from './components/inventory/OnlineInventoryApiWorkbench';
 import { getStockHealth } from './utils/formatters';
 import { cleanCNPJ } from './utils/cnpjValidator';
+import { secureSession } from './client/storage/secureSessionStorage';
 
 // Limpeza única e definitiva de dados legados de depuração salvos em versões anteriores no navegador
 const CLEAN_DEBUG_KEY = 'ce_v2_clean_debug_2026';
@@ -260,11 +261,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('ce_active_company_id', activeCompanyId);
     if (activeCompanyId) {
-      fetch('/api/database/activate-tenant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tenantId: activeCompanyId }),
-      }).catch(() => {});
+      secureSession.getAccessToken().then((authToken) => {
+        fetch('/api/database/activate-tenant', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ tenantId: activeCompanyId }),
+        }).catch(() => {});
+      });
     }
   }, [activeCompanyId]);
 
@@ -797,15 +803,20 @@ export default function App() {
 
     // Se possui parâmetros de banco vinculados ao tenant, salva explicitamente no endpoint de tenant
     if (company.databaseConfig) {
-      fetch('/api/database/save-tenant-config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantId: company.id,
-          companyId: company.id,
-          databaseConfig: company.databaseConfig,
-        }),
-      }).catch(() => {});
+      secureSession.getAccessToken().then((authToken) => {
+        fetch('/api/database/save-tenant-config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            tenantId: company.id,
+            companyId: company.id,
+            databaseConfig: company.databaseConfig,
+          }),
+        }).catch(() => {});
+      });
     }
   };
 
